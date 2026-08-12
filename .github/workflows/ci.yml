@@ -1,10 +1,15 @@
 name: CI
 
+# Both default branch names are listed on purpose. A workflow that names only
+# one is silently inert on a repository that uses the other: nothing fails,
+# nothing runs, and the badge everyone reads is simply absent. That happened to
+# this repository on its first push, and tests/test_ci.py now asserts the branch
+# this checkout is on is one of the branches listed here.
 on:
   push:
-    branches: [main]
+    branches: [main, master]
   pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read

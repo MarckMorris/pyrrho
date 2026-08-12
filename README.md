@@ -1,5 +1,9 @@
 # pyrrho
 
+[![CI](https://github.com/MarckMorris/pyrrho/actions/workflows/ci.yml/badge.svg)](https://github.com/MarckMorris/pyrrho/actions/workflows/ci.yml)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 **Adversarial review of Terraform plans.** It does not deploy. It doubts.
 
 Point it at a `terraform plan` and it reports what the plan actually does and
@@ -313,7 +317,7 @@ pyrrho benchmark
   false alarms 0/27 cases (0%)
 ```
 
-Test suite: **457 tests, 98% line coverage**, on Python 3.10, 3.11 and 3.12.
+Test suite: **468 tests, 98% line coverage**, on Python 3.10, 3.11 and 3.12.
 
 ```bash
 pytest -q --cov=pyrrho --cov-report=term-missing
