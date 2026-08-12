@@ -3,7 +3,21 @@
   "terraform_version": "1.9.8",
   "planned_values": {
     "root_module": {
-      "resources": []
+      "resources": [
+        {
+          "address": "aws_cloudwatch_log_group.audit",
+          "mode": "managed",
+          "type": "aws_cloudwatch_log_group",
+          "name": "audit",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "name": "/acme/audit-v2",
+            "retention_in_days": 365
+          },
+          "sensitive_values": {}
+        }
+      ]
     }
   },
   "resource_changes": [

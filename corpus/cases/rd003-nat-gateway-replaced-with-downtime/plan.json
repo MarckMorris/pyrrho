@@ -3,7 +3,21 @@
   "terraform_version": "1.9.8",
   "planned_values": {
     "root_module": {
-      "resources": []
+      "resources": [
+        {
+          "address": "aws_nat_gateway.egress",
+          "mode": "managed",
+          "type": "aws_nat_gateway",
+          "name": "egress",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "allocation_id": "eipalloc-new",
+            "subnet_id": "subnet-0aa"
+          },
+          "sensitive_values": {}
+        }
+      ]
     }
   },
   "resource_changes": [

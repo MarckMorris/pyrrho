@@ -3,7 +3,41 @@
   "terraform_version": "1.9.8",
   "planned_values": {
     "root_module": {
-      "resources": []
+      "resources": [
+        {
+          "address": "aws_security_group.public_web",
+          "mode": "managed",
+          "type": "aws_security_group",
+          "name": "public_web",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "name": "public-web",
+            "description": "Managed by Terraform: public-web",
+            "vpc_id": "vpc-0a1b2c3d4e5f60718",
+            "ingress": [
+              {
+                "from_port": 443,
+                "to_port": 443,
+                "protocol": "tcp",
+                "cidr_blocks": [
+                  "0.0.0.0/0"
+                ],
+                "ipv6_cidr_blocks": [],
+                "prefix_list_ids": [],
+                "security_groups": [],
+                "self": false,
+                "description": "HTTPS from the internet"
+              }
+            ],
+            "egress": [],
+            "tags": {
+              "ManagedBy": "terraform"
+            }
+          },
+          "sensitive_values": {}
+        }
+      ]
     }
   },
   "resource_changes": [

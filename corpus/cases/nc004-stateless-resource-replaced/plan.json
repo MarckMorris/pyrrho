@@ -3,7 +3,22 @@
   "terraform_version": "1.9.8",
   "planned_values": {
     "root_module": {
-      "resources": []
+      "resources": [
+        {
+          "address": "aws_launch_template.workers",
+          "mode": "managed",
+          "type": "aws_launch_template",
+          "name": "workers",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "name_prefix": "workers-",
+            "image_id": "ami-new",
+            "instance_type": "m6i.large"
+          },
+          "sensitive_values": {}
+        }
+      ]
     }
   },
   "resource_changes": [

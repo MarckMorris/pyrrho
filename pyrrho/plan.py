@@ -27,6 +27,20 @@ from typing import Any
 
 SUPPORTED_FORMAT_MAJOR = 1
 
+# Two documents in the wild carry the same plan, under different top-level keys.
+#
+#   LOCAL_PLAN  what `terraform show -json <planfile>` writes. Key: format_version.
+#   HCP_PLAN    the redacted plan HCP Terraform (formerly Terraform Cloud) serves
+#               from its run API, which is what a team using remote execution
+#               actually has to hand. Key: plan_format_version, no
+#               terraform_version, and provider schemas attached.
+#
+# The resource_changes structure is identical in both, which is why supporting
+# the second costs one line and rejecting it would have made the tool useless to
+# anyone running Terraform remotely.
+LOCAL_PLAN = "terraform show -json"
+HCP_PLAN = "HCP Terraform redacted plan"
+
 
 class PlanFormatError(ValueError):
     """The input is not a Terraform plan JSON document we can read."""
@@ -169,6 +183,7 @@ class Plan:
     resource_changes: list[ResourceChange]
     drift: list[ResourceChange]
     output_changes: dict[str, Any]
+    flavour: str = LOCAL_PLAN
 
     @property
     def effective_changes(self) -> list[ResourceChange]:
@@ -190,11 +205,16 @@ class Plan:
         if not isinstance(data, dict):
             raise PlanFormatError("plan JSON must be a JSON object at the top level")
 
+        flavour = LOCAL_PLAN
         format_version = str(data.get("format_version", ""))
+        if not format_version:
+            format_version = str(data.get("plan_format_version", ""))
+            if format_version:
+                flavour = HCP_PLAN
         if not format_version:
             raise PlanFormatError(
                 "missing 'format_version'; this does not look like the output of "
-                "'terraform show -json <planfile>'"
+                "'terraform show -json <planfile>', nor an HCP Terraform redacted plan"
             )
         major = format_version.split(".", 1)[0]
         if major.isdigit() and int(major) != SUPPORTED_FORMAT_MAJOR:
@@ -208,6 +228,7 @@ class Plan:
                 "no 'resource_changes' key. If you passed the output of "
                 "'terraform show -json' with no plan file, that is state, not a plan"
             )
+
 
         raw_changes = data.get("resource_changes") or []
         if not isinstance(raw_changes, list):
@@ -225,6 +246,7 @@ class Plan:
             resource_changes=[ResourceChange.from_json(rc) for rc in raw_changes],
             drift=[ResourceChange.from_json(rc) for rc in raw_drift],
             output_changes=_as_dict(data.get("output_changes")),
+            flavour=flavour,
         )
 
 

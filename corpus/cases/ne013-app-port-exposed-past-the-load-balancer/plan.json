@@ -3,7 +3,54 @@
   "terraform_version": "1.9.8",
   "planned_values": {
     "root_module": {
-      "resources": []
+      "resources": [
+        {
+          "address": "aws_security_group.app",
+          "mode": "managed",
+          "type": "aws_security_group",
+          "name": "app",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "name": "app",
+            "description": "Managed by Terraform: app",
+            "vpc_id": "vpc-0a1b2c3d4e5f60718",
+            "ingress": [
+              {
+                "from_port": 8080,
+                "to_port": 8080,
+                "protocol": "tcp",
+                "cidr_blocks": [
+                  "10.0.0.0/16"
+                ],
+                "ipv6_cidr_blocks": [],
+                "prefix_list_ids": [],
+                "security_groups": [],
+                "self": false,
+                "description": "from the load balancer"
+              },
+              {
+                "from_port": 8080,
+                "to_port": 8080,
+                "protocol": "tcp",
+                "cidr_blocks": [
+                  "0.0.0.0/0"
+                ],
+                "ipv6_cidr_blocks": [],
+                "prefix_list_ids": [],
+                "security_groups": [],
+                "self": false,
+                "description": "direct access for debugging the health check"
+              }
+            ],
+            "egress": [],
+            "tags": {
+              "ManagedBy": "terraform"
+            }
+          },
+          "sensitive_values": {}
+        }
+      ]
     }
   },
   "resource_changes": [

@@ -3,7 +3,27 @@
   "terraform_version": "1.9.8",
   "planned_values": {
     "root_module": {
-      "resources": []
+      "resources": [
+        {
+          "address": "aws_network_acl_rule.allow_all_inbound",
+          "mode": "managed",
+          "type": "aws_network_acl_rule",
+          "name": "allow_all_inbound",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "network_acl_id": "acl-0123456789abcdef0",
+            "rule_number": 100,
+            "egress": false,
+            "protocol": "-1",
+            "rule_action": "allow",
+            "cidr_block": "0.0.0.0/0",
+            "from_port": null,
+            "to_port": null
+          },
+          "sensitive_values": {}
+        }
+      ]
     }
   },
   "resource_changes": [

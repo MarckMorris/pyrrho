@@ -3,7 +3,22 @@
   "terraform_version": "1.9.8",
   "planned_values": {
     "root_module": {
-      "resources": []
+      "resources": [
+        {
+          "address": "aws_lb.internal_api",
+          "mode": "managed",
+          "type": "aws_lb",
+          "name": "internal_api",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "name": "internal-api",
+            "internal": false,
+            "load_balancer_type": "application"
+          },
+          "sensitive_values": {}
+        }
+      ]
     }
   },
   "resource_changes": [

@@ -61,6 +61,12 @@ discipline the whole design rests on.
 Terraform's documented plan format (`format_version` 1.2, `terraform_version`
 1.9.8) from the declaration in the generator.
 
+That is a smaller gap than it was. `scripts/validate_against_terraform.py` parses
+36 plan documents that Terraform itself produced — HashiCorp's own golden files
+for `terraform show -json`, at a pinned commit — and every action set this corpus
+uses appears in them. So the shapes here are not invented. What the corpus still
+cannot do is discover a dangerous pattern its author did not think of.
+
 Every case ships its HCL, so anyone with a Terraform binary and credentials can
 regenerate the JSON from a real plan:
 

@@ -3,7 +3,41 @@
   "terraform_version": "1.9.8",
   "planned_values": {
     "root_module": {
-      "resources": []
+      "resources": [
+        {
+          "address": "aws_security_group.debug",
+          "mode": "managed",
+          "type": "aws_security_group",
+          "name": "debug",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "name": "temp-debug-do-not-merge",
+            "description": "Managed by Terraform: temp-debug-do-not-merge",
+            "vpc_id": "vpc-0a1b2c3d4e5f60718",
+            "ingress": [
+              {
+                "from_port": 0,
+                "to_port": 0,
+                "protocol": "-1",
+                "cidr_blocks": [
+                  "0.0.0.0/0"
+                ],
+                "ipv6_cidr_blocks": [],
+                "prefix_list_ids": [],
+                "security_groups": [],
+                "self": false,
+                "description": ""
+              }
+            ],
+            "egress": [],
+            "tags": {
+              "ManagedBy": "terraform"
+            }
+          },
+          "sensitive_values": {}
+        }
+      ]
     }
   },
   "resource_changes": [

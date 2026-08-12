@@ -59,6 +59,50 @@ jobs:
       - name: Run the benchmark
         run: python scripts/benchmark.py --verbose
 
+  upstream-plans:
+    name: Parse Terraform's own plan JSON golden files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      # The corpus is written to Terraform's documented format rather than
+      # captured from a live run. This job checks the parser against documents
+      # Terraform itself produced: HashiCorp's golden files for
+      # `terraform show -json`, at a pinned commit. They are BUSL-1.1 and are
+      # read in place, never vendored into this repository.
+      - name: Validate against hashicorp/terraform
+        run: python scripts/validate_against_terraform.py
+
+  compare:
+    name: Compare against Checkov on the same corpus
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e . checkov
+
+      # The comparison numbers quoted in README.md come from here. Re-running it
+      # on every push is what stops them becoming a claim about a version of
+      # Checkov that shipped a year ago.
+      - name: Run the comparison
+        run: python scripts/compare_checkov.py --jobs 4
+
   self-review:
     name: Review the corpus and publish to the Security tab
     runs-on: ubuntu-latest

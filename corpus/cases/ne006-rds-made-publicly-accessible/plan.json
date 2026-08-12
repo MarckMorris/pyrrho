@@ -3,7 +3,23 @@
   "terraform_version": "1.9.8",
   "planned_values": {
     "root_module": {
-      "resources": []
+      "resources": [
+        {
+          "address": "aws_db_instance.orders",
+          "mode": "managed",
+          "type": "aws_db_instance",
+          "name": "orders",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "identifier": "orders-prod",
+            "engine": "postgres",
+            "publicly_accessible": true,
+            "deletion_protection": true
+          },
+          "sensitive_values": {}
+        }
+      ]
     }
   },
   "resource_changes": [

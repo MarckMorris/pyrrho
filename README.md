@@ -56,8 +56,10 @@ Also not covered, and worth knowing before you rely on it:
   what is in `sg-abc123`.
 - **Routing is not analyzed.** A subnet moved to a public route table, a VPC peering
   connection, a transit gateway attachment — none of these are examined.
-- **No corpus case has been captured from a live `terraform plan`.** See
-  [Honesty about the corpus](#honesty-about-the-corpus).
+- **No corpus case has been captured from a live `terraform plan`.** The parser
+  *is* validated against 36 plan documents Terraform itself produced — see
+  [What is verified, and how](#what-is-verified-and-how) — but the corpus that
+  drives the benchmark is written to the documented format, not captured.
 
 A clean pyrrho run means "these two analyzers found nothing", not "this change is
 safe". The tool says so in its own output.
@@ -84,6 +86,54 @@ starts reporting.
 The second choice is that **every finding carries the values it was derived
 from**. `previously_allowed`, `new_sources`, `widening_factor`, `action_reason`.
 You can check the claim without re-running the tool and without trusting it.
+
+---
+
+## Measured against Checkov
+
+The corpus exists to be run against other tools, not just this one. Checkov is
+the most widely deployed Terraform scanner and it reads plan files, so it is the
+fair comparison.
+
+```bash
+pip install checkov && python scripts/compare_checkov.py
+```
+
+```
+  pyrrho   detected 22/23 dangerous (96%)   false alarms 1/4 controls
+  checkov  detected 15/23 dangerous (65%)   false alarms 3/4 controls
+```
+
+**Read that fairly, because the framing does a lot of work.** Checkov is not
+trying to do delta analysis; its three false alarms are failures against
+*pyrrho's* definition of the job, not against its own. On its own terms — "does
+this end state violate a policy" — Checkov is right every time. It has hundreds
+of policies pyrrho will never have, and it covers Kubernetes, CloudFormation,
+Helm and more.
+
+What the numbers do show is that the two tools answer different questions, and
+that the question pyrrho asks is not otherwise being asked:
+
+| Corpus case | pyrrho | Checkov | Why |
+|---|---|---|---|
+| `nc002` tag edit on a group already open to the world | quiet | `CKV_AWS_24` | Checkov evaluates the end state, so pre-existing exposure is reported on a change that did not cause it |
+| `nc003` SSH range narrowed from `0.0.0.0/0` to `10.20.0.0/16` | quiet | `CKV_AWS_23` | An improvement, reported as a problem |
+| `rd001` production database destroyed | `RD001` critical | — | A destroyed resource is absent from the end state, so there is nothing left to evaluate |
+| `rd003` NAT gateway replaced destroy-first | `RD003` | — | Downtime is a property of the transition, not of either state |
+| `ne004` source range widened `/24` → `/8` | `NE004` | — | Both states contain a CIDR; only the comparison shows the problem |
+| `ne003` PostgreSQL via `aws_vpc_security_group_ingress_rule` | `NE001` critical | — | The newer rule resource shape |
+
+The `rd001`/`rd003` rows are the structural point. A scanner that reads the
+planned end state **cannot** see a destroy, because the thing that matters is the
+resource that is no longer there.
+
+Two honest marks against pyrrho in that table's own run: it reports a `low` note
+on `nc001`, a deliberately public HTTPS rule, which is counted here as a false
+alarm with no exemption Checkov does not also get; and it misses `rd007` because
+`--claim` is withheld, there being no Checkov equivalent to compare against.
+
+**These tools are complements, not substitutes.** Run Checkov for policy
+coverage. Run pyrrho for what this change does.
 
 ---
 
@@ -263,7 +313,7 @@ pyrrho benchmark
   false alarms 0/27 cases (0%)
 ```
 
-Test suite: **439 tests, 98% line coverage**, on Python 3.10, 3.11 and 3.12.
+Test suite: **457 tests, 98% line coverage**, on Python 3.10, 3.11 and 3.12.
 
 ```bash
 pytest -q --cov=pyrrho --cov-report=term-missing
@@ -293,27 +343,77 @@ fixed set of files and the analyzers are deterministic, which means two runs on
 one commit are byte-identical — a property asserted by
 `tests/test_corpus.py::TestBenchmark::test_the_benchmark_is_deterministic`.
 
-### Honesty about the corpus
+## What is verified, and how
+
+There are two separate questions, and conflating them is how a project ends up
+overclaiming. They are answered by two different scripts.
+
+### 1. Does the parser handle what Terraform really emits?
+
+**Yes, and this is checked in CI.** HashiCorp's own repository contains the
+golden files it uses to test `terraform show -json`. They were produced by
+Terraform, they exist specifically to exercise the format's awkward corners, and
+they span years of releases.
+
+```bash
+python scripts/validate_against_terraform.py
+```
+
+```
+pyrrho parser vs. Terraform's own plan JSON golden files
+  source: hashicorp/terraform @ 7d231820db94 (BUSL-1.1, not vendored)
+
+  plan documents found  36
+  parsed                36
+  rejected              0
+  analyzer crashes      0
+
+  plan format versions  1.0, 1.1, 1.2
+  terraform versions    0.13.0, 0.13.1-dev, 1.1.0-dev, 1.2.0-dev, 1.4.4, 1.5.0
+  plan flavours         HCP Terraform redacted plan, terraform show -json
+  action sets           create, delete, delete+create, no-op, update
+  action reasons        delete_because_no_resource_config, replace_because_cannot_update
+
+  findings on real plans:
+    RD005      internal/cloud/testdata/plan-json-full/plan-redacted.json
+    RD005      internal/command/testdata/show-json/drift/output.json
+    RD005      internal/command/testdata/show-json/moved-drift/output.json
+```
+
+Two things worth reading twice. `RD005` fires on exactly the three documents that
+contain drift and on nothing else — the analyzer found the right thing in real
+data it had never seen. And the run surfaced a genuine gap: HCP Terraform
+(formerly Terraform Cloud) serves its redacted plan under `plan_format_version`
+rather than `format_version`, so every team using remote execution would have been
+told their plan was unreadable. That is fixed, and it is the sort of thing only
+real input finds.
+
+These files are **not vendored**. hashicorp/terraform is BUSL-1.1, which an MIT
+project cannot redistribute. The script fetches them at a pinned commit and reads
+them in place.
+
+### 2. Do the rules catch dangerous changes without crying wolf?
+
+This is what the corpus and `scripts/benchmark.py` answer, and here the honesty
+caveat still stands in full.
 
 The plan JSON in `corpus/cases/*/plan.json` is **written to Terraform's documented
-plan format (`format_version` 1.2), not captured from a live `terraform plan`
-against a real cloud account.** No case has been verified against a real
-Terraform run: the benchmark prints `0/27` for this and
-`tests/test_corpus.py` fails if anyone flips the flag without updating this
+plan format, not captured from a live `terraform plan` against a real cloud
+account.** The benchmark prints `cases captured from a real terraform plan: 0/27`
+and `tests/test_corpus.py` fails if anyone flips that flag without updating this
 section.
 
-What that does and does not undermine:
+What that does and does not undermine, now that the parser is validated upstream:
 
-- It does **not** affect whether the parser handles real plans. The shapes it
-  handles — `["delete","create"]` versus `["create","delete"]`, `after_unknown`
-  markers, `before_sensitive` arriving as `false` rather than a dict — are the
-  documented ones, and each has its own test.
-- It **does** mean the corpus cannot catch a case where real Terraform emits
-  something the documentation does not describe.
+- It does **not** mean the shapes are invented. Every action set the corpus uses
+  appears in Terraform's own golden files, as printed above.
+- It **does** mean the corpus is a test of the *rules*, written by the same person
+  who wrote them, and cannot discover a dangerous pattern its author did not
+  think of.
 
-Every case ships the HCL it corresponds to, so it can be regenerated:
-`scripts/regenerate_from_terraform.sh`. Closing this gap is the first item in
-[Next](#next).
+Every case ships the HCL it corresponds to, so it can be regenerated with
+`scripts/regenerate_from_terraform.sh` by anyone with a Terraform binary and
+credentials.
 
 ---
 
@@ -338,25 +438,31 @@ pyrrho/
 ├── skills/review/SKILL.md      Claude Code skill
 ├── bin/pyrrho                  wrapper so the plugin works without an install
 └── scripts/
-    ├── generate_corpus.py      emits the corpus from one declaration per case
-    ├── benchmark.py            the numbers in this README
-    └── self_review.py          reviews the corpus, emits SARIF for CI
+    ├── generate_corpus.py             emits the corpus from one declaration per case
+    ├── benchmark.py                   the detection and false-alarm numbers
+    ├── validate_against_terraform.py  parses Terraform's own golden plan files
+    ├── compare_checkov.py             the same corpus, scored against Checkov
+    ├── self_review.py                 reviews the corpus, emits SARIF for CI
+    └── regenerate_from_terraform.sh   recaptures the corpus from a real binary
 ```
 
 CI runs the tests on three Python versions, regenerates the corpus and fails on
-any diff, runs the benchmark, asserts the documented exit codes, validates the
-plugin layout, and uploads the corpus review to this repository's own Security
-tab. There is no `continue-on-error` in the test job: a pipeline that stays green
-while its tests fail turns a real signal into decoration.
+any diff, runs the benchmark, parses Terraform's own golden plan files, asserts
+the documented exit codes, validates the plugin layout, and uploads the corpus
+review to this repository's own Security tab. There is no `continue-on-error` in
+the test job: a pipeline that stays green while its tests fail turns a real
+signal into decoration.
 
 ---
 
 ## Next
 
 1. Capture the corpus from a real `terraform plan` and flip
-   `verified_against_terraform`. This is the largest open gap.
-2. Benchmark other Terraform security tools against the same corpus. That
-   comparison is the number worth publishing.
+   `verified_against_terraform`. Less urgent than it was — the parser is
+   validated against Terraform's own output — but it is the last honesty caveat
+   left standing.
+2. Extend the comparison beyond Checkov: Trivy and Terrascan next, same corpus,
+   same scoring.
 3. Resolve security-group-to-security-group references, so `NE001` can follow a
    rule sourced from another group.
 4. Then, and only then, a third analyzer.

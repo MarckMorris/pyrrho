@@ -42,6 +42,64 @@ class TestRejectingBadInput:
             plan_mod.load(tmp_path)
 
 
+class TestPlanFlavours:
+    """Two documents in the wild carry the same plan under different keys.
+
+    The HCP shape here is hand-written from the structure observed in
+    hashicorp/terraform's own fixtures. Those fixtures are BUSL-1.1 and are not
+    copied into this repository; `scripts/validate_against_terraform.py` reads
+    them at a pinned commit instead.
+    """
+
+    HCP = {
+        "plan_format_version": "1.1",
+        "provider_format_version": "1.0",
+        "resource_changes": [
+            {
+                "address": "aws_db_instance.orders",
+                "mode": "managed",
+                "type": "aws_db_instance",
+                "name": "orders",
+                "provider_name": "registry.terraform.io/hashicorp/aws",
+                "change": {
+                    "actions": ["delete"],
+                    "before": {"identifier": "orders-prod"},
+                    "after": None,
+                    "after_unknown": {},
+                    "before_sensitive": False,
+                    "after_sensitive": False,
+                },
+            }
+        ],
+        "resource_drift": [],
+        "relevant_attributes": [],
+    }
+
+    def test_a_local_plan_reports_its_flavour(self):
+        plan = make_plan([change("a.b", "aws_x", ["update"])])
+        assert plan.flavour == plan_mod.LOCAL_PLAN
+
+    def test_an_hcp_redacted_plan_is_accepted(self):
+        plan = plan_mod.loads(json.dumps(self.HCP))
+        assert plan.flavour == plan_mod.HCP_PLAN
+        assert plan.format_version == "1.1"
+
+    def test_an_hcp_plan_yields_the_same_resource_changes(self):
+        plan = plan_mod.loads(json.dumps(self.HCP))
+        rc = plan.resource_changes[0]
+        assert rc.address == "aws_db_instance.orders"
+        assert rc.is_delete
+        assert rc.prior("identifier") == "orders-prod"
+
+    def test_an_hcp_plan_has_no_terraform_version(self):
+        # The remote API does not include it; nothing may assume it is there.
+        assert plan_mod.loads(json.dumps(self.HCP)).terraform_version == ""
+
+    def test_a_document_with_neither_key_names_both_formats(self):
+        with pytest.raises(PlanFormatError, match="HCP Terraform redacted plan"):
+            plan_mod.loads(json.dumps({"resource_changes": []}))
+
+
 class TestActionSemantics:
     def test_destroy_then_create_is_a_replacement(self):
         rc = make_plan([change("a.b", "aws_instance", ["delete", "create"])]).resource_changes[0]

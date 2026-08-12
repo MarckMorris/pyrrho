@@ -104,11 +104,44 @@ def sg(
     }
 
 
+def planned_values(changes: list[dict[str, Any]]) -> dict[str, Any]:
+    """The post-apply state, as `terraform show -json` renders it.
+
+    This section is not optional decoration. Most existing scanners read
+    ``planned_values`` and ignore ``resource_changes`` entirely, because they
+    evaluate the final state against a policy catalogue rather than comparing it
+    to the prior state. Emitting only ``resource_changes`` would make this corpus
+    unreadable to them, and a benchmark nobody else can run is not a benchmark.
+
+    Resources being destroyed are absent, because after the apply they do not
+    exist. That is what real Terraform does too.
+    """
+    resources: list[dict[str, Any]] = []
+    for entry in changes:
+        actions = entry["change"]["actions"]
+        after = entry["change"].get("after")
+        if actions == ["delete"] or actions == ["no-op"] or after is None:
+            continue
+        resources.append(
+            {
+                "address": entry["address"],
+                "mode": entry.get("mode", "managed"),
+                "type": entry["type"],
+                "name": entry["name"],
+                "provider_name": entry.get("provider_name", AWS_PROVIDER),
+                "schema_version": 0,
+                "values": after,
+                "sensitive_values": entry["change"].get("after_sensitive") or {},
+            }
+        )
+    return {"root_module": {"resources": resources}}
+
+
 def plan_doc(changes: list[dict[str, Any]], drift: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     doc: dict[str, Any] = {
         "format_version": FORMAT_VERSION,
         "terraform_version": TERRAFORM_VERSION,
-        "planned_values": {"root_module": {"resources": []}},
+        "planned_values": planned_values(changes),
         "resource_changes": changes,
         "output_changes": {},
     }

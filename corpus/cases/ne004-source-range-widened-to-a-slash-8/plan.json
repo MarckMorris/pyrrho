@@ -3,7 +3,29 @@
   "terraform_version": "1.9.8",
   "planned_values": {
     "root_module": {
-      "resources": []
+      "resources": [
+        {
+          "address": "aws_security_group_rule.mysql_from_partner",
+          "mode": "managed",
+          "type": "aws_security_group_rule",
+          "name": "mysql_from_partner",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "type": "ingress",
+            "security_group_id": "sg-0f1e2d3c4b5a69788",
+            "from_port": 3306,
+            "to_port": 3306,
+            "protocol": "tcp",
+            "cidr_blocks": [
+              "198.0.0.0/8"
+            ],
+            "ipv6_cidr_blocks": [],
+            "description": "partner analytics"
+          },
+          "sensitive_values": {}
+        }
+      ]
     }
   },
   "resource_changes": [
