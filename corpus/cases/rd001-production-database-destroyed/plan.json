@@ -1,0 +1,36 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.8",
+  "planned_values": {
+    "root_module": {
+      "resources": []
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_db_instance.legacy_reports",
+      "mode": "managed",
+      "type": "aws_db_instance",
+      "name": "legacy_reports",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "delete"
+        ],
+        "before": {
+          "identifier": "legacy-reports-prod",
+          "engine": "postgres",
+          "allocated_storage": 500,
+          "deletion_protection": false,
+          "skip_final_snapshot": true
+        },
+        "after": null,
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": false
+      },
+      "action_reason": "delete_because_no_resource_config"
+    }
+  ],
+  "output_changes": {}
+}

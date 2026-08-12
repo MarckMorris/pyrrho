@@ -1,0 +1,168 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests on Python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      # No continue-on-error anywhere in this job. A pipeline that stays green
+      # while its tests fail turns a real signal into decoration.
+      - name: Run tests
+        run: pytest -v --cov=pyrrho --cov-report=term-missing
+
+  corpus:
+    name: Corpus is current and the benchmark passes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      # The committed corpus must match what the generator produces. Otherwise
+      # someone edits a plan.json by hand and the generator silently disagrees.
+      - name: Regenerate the corpus and fail on any diff
+        run: |
+          python scripts/generate_corpus.py
+          git diff --exit-code -- corpus/
+
+      - name: Run the benchmark
+        run: python scripts/benchmark.py --verbose
+
+  self-review:
+    name: Review the corpus and publish to the Security tab
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      # The corpus is a set of deliberately dangerous changes, so this is
+      # expected to produce findings. It is the demonstration, not a failure.
+      - name: Review the corpus
+        run: python scripts/self_review.py --output pyrrho-corpus.sarif
+
+      - name: Publish findings to the Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: pyrrho-corpus.sarif
+          category: pyrrho-corpus
+
+  cli-contract:
+    name: Exit codes behave as documented
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: A dangerous plan blocks the pipeline
+        run: |
+          set +e
+          pyrrho corpus/cases/ne001-ssh-opened-to-the-internet/plan.json --quiet
+          code=$?
+          set -e
+          test "$code" -eq 1 || { echo "expected exit 1, got $code"; exit 1; }
+
+      - name: A benign control does not block the pipeline
+        run: |
+          pyrrho corpus/cases/nc002-preexisting-exposure-left-untouched/plan.json --quiet
+
+      - name: A baseline turns a block into a pass
+        run: |
+          pyrrho corpus/cases/ne001-ssh-opened-to-the-internet/plan.json \
+            --init-baseline /tmp/baseline.json
+          pyrrho corpus/cases/ne001-ssh-opened-to-the-internet/plan.json \
+            --baseline /tmp/baseline.json --quiet
+
+      - name: An unreadable plan exits 2, not 1
+        run: |
+          echo 'not json' > /tmp/bad.json
+          set +e
+          pyrrho /tmp/bad.json --quiet
+          code=$?
+          set -e
+          test "$code" -eq 2 || { echo "expected exit 2, got $code"; exit 1; }
+
+      - name: The attestation is signed when a key is present
+        env:
+          PYRRHO_ATTEST_KEY: ${{ github.sha }}
+        run: |
+          pyrrho corpus/cases/rd001-production-database-destroyed/plan.json \
+            --attest /tmp/attestation.json --quiet || true
+          python -c "
+          import json, sys
+          doc = json.load(open('/tmp/attestation.json'))
+          assert doc['signed'] is True, doc
+          assert doc['verdict'] == 'block', doc
+          print('attestation signed, verdict', doc['verdict'])
+          "
+
+  plugin:
+    name: Plugin structure is valid
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Validate the plugin layout
+        run: pytest -v tests/test_plugin.py
+
+      - name: The bundled wrapper runs without an install
+        run: |
+          env -u PYTHONPATH PATH="$PWD/bin:/usr/bin:/bin" pyrrho --list-analyzers

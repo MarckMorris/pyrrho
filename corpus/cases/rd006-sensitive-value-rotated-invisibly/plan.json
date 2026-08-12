@@ -1,0 +1,39 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.8",
+  "planned_values": {
+    "root_module": {
+      "resources": []
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_secretsmanager_secret_version.api_key",
+      "mode": "managed",
+      "type": "aws_secretsmanager_secret_version",
+      "name": "api_key",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "update"
+        ],
+        "before": {
+          "secret_id": "arn:aws:secretsmanager:us-east-1:111122223333:secret:api-key",
+          "secret_string": "REDACTED-OLD"
+        },
+        "after": {
+          "secret_id": "arn:aws:secretsmanager:us-east-1:111122223333:secret:api-key",
+          "secret_string": "REDACTED-NEW"
+        },
+        "after_unknown": {},
+        "before_sensitive": {
+          "secret_string": true
+        },
+        "after_sensitive": {
+          "secret_string": true
+        }
+      }
+    }
+  ],
+  "output_changes": {}
+}

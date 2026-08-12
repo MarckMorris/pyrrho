@@ -1,0 +1,37 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.8",
+  "planned_values": {
+    "root_module": {
+      "resources": []
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_lb.internal_api",
+      "mode": "managed",
+      "type": "aws_lb",
+      "name": "internal_api",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "update"
+        ],
+        "before": {
+          "name": "internal-api",
+          "internal": true,
+          "load_balancer_type": "application"
+        },
+        "after": {
+          "name": "internal-api",
+          "internal": false,
+          "load_balancer_type": "application"
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": false
+      }
+    }
+  ],
+  "output_changes": {}
+}

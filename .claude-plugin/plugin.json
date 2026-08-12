@@ -1,0 +1,18 @@
+{
+  "name": "pyrrho",
+  "description": "Adversarial review of Terraform plans before they are applied. Reports what the plan really does and what it newly exposes, with the evidence for every claim.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Marcos Morris"
+  },
+  "homepage": "https://github.com/MarckMorris/pyrrho",
+  "repository": "https://github.com/MarckMorris/pyrrho",
+  "license": "MIT",
+  "keywords": [
+    "terraform",
+    "security",
+    "infrastructure",
+    "code-review",
+    "sarif"
+  ]
+}

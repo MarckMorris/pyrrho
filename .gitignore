@@ -1,0 +1,38 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.eggs/
+
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+
+.venv/
+venv/
+env/
+
+# pyrrho's own outputs. Anchored to the repository root on purpose: an
+# unanchored `plan.json` matches at every depth and silently excludes the whole
+# of corpus/cases/*/plan.json, which is the project's specification.
+/*.sarif
+/pyrrho-baseline.json
+/pyrrho-attestation.json
+
+# Terraform, in case anyone runs the regeneration script in-tree
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+/tfplan.binary
+/plan.json
+
+# Belt and braces: the corpus is committed, whatever else is ignored.
+!corpus/cases/**/plan.json
+
+.DS_Store
+.idea/
+.vscode/

@@ -1,0 +1,46 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.8",
+  "planned_values": {
+    "root_module": {
+      "resources": []
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_db_instance.orders",
+      "mode": "managed",
+      "type": "aws_db_instance",
+      "name": "orders",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "delete",
+          "create"
+        ],
+        "before": {
+          "identifier": "orders-prod",
+          "engine": "postgres",
+          "db_subnet_group_name": "orders-subnets-old",
+          "skip_final_snapshot": true
+        },
+        "after": {
+          "identifier": "orders-prod",
+          "engine": "postgres",
+          "db_subnet_group_name": "orders-subnets-new",
+          "skip_final_snapshot": true
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": false,
+        "replace_paths": [
+          [
+            "db_subnet_group_name"
+          ]
+        ]
+      },
+      "action_reason": "replace_because_cannot_update"
+    }
+  ],
+  "output_changes": {}
+}

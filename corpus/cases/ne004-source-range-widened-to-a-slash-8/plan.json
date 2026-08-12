@@ -1,0 +1,51 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.8",
+  "planned_values": {
+    "root_module": {
+      "resources": []
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_security_group_rule.mysql_from_partner",
+      "mode": "managed",
+      "type": "aws_security_group_rule",
+      "name": "mysql_from_partner",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "update"
+        ],
+        "before": {
+          "type": "ingress",
+          "security_group_id": "sg-0f1e2d3c4b5a69788",
+          "from_port": 3306,
+          "to_port": 3306,
+          "protocol": "tcp",
+          "cidr_blocks": [
+            "198.51.100.0/24"
+          ],
+          "ipv6_cidr_blocks": [],
+          "description": "partner analytics"
+        },
+        "after": {
+          "type": "ingress",
+          "security_group_id": "sg-0f1e2d3c4b5a69788",
+          "from_port": 3306,
+          "to_port": 3306,
+          "protocol": "tcp",
+          "cidr_blocks": [
+            "198.0.0.0/8"
+          ],
+          "ipv6_cidr_blocks": [],
+          "description": "partner analytics"
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": false
+      }
+    }
+  ],
+  "output_changes": {}
+}

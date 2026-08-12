@@ -1,0 +1,49 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.8",
+  "planned_values": {
+    "root_module": {
+      "resources": []
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_eks_cluster.platform",
+      "mode": "managed",
+      "type": "aws_eks_cluster",
+      "name": "platform",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "update"
+        ],
+        "before": {
+          "name": "platform",
+          "vpc_config": [
+            {
+              "endpoint_public_access": false,
+              "endpoint_private_access": true,
+              "public_access_cidrs": []
+            }
+          ]
+        },
+        "after": {
+          "name": "platform",
+          "vpc_config": [
+            {
+              "endpoint_public_access": true,
+              "endpoint_private_access": true,
+              "public_access_cidrs": [
+                "0.0.0.0/0"
+              ]
+            }
+          ]
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": false
+      }
+    }
+  ],
+  "output_changes": {}
+}

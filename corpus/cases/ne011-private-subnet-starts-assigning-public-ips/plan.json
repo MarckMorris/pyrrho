@@ -1,0 +1,35 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.8",
+  "planned_values": {
+    "root_module": {
+      "resources": []
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_subnet.app",
+      "mode": "managed",
+      "type": "aws_subnet",
+      "name": "app",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "update"
+        ],
+        "before": {
+          "cidr_block": "10.0.12.0/24",
+          "map_public_ip_on_launch": false
+        },
+        "after": {
+          "cidr_block": "10.0.12.0/24",
+          "map_public_ip_on_launch": true
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": false
+      }
+    }
+  ],
+  "output_changes": {}
+}

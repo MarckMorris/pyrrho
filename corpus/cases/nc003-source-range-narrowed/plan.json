@@ -1,0 +1,47 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.8",
+  "planned_values": {
+    "root_module": {
+      "resources": []
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_security_group_rule.ssh",
+      "mode": "managed",
+      "type": "aws_security_group_rule",
+      "name": "ssh",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "update"
+        ],
+        "before": {
+          "type": "ingress",
+          "from_port": 22,
+          "to_port": 22,
+          "protocol": "tcp",
+          "cidr_blocks": [
+            "0.0.0.0/0"
+          ],
+          "ipv6_cidr_blocks": []
+        },
+        "after": {
+          "type": "ingress",
+          "from_port": 22,
+          "to_port": 22,
+          "protocol": "tcp",
+          "cidr_blocks": [
+            "10.20.0.0/16"
+          ],
+          "ipv6_cidr_blocks": []
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": false
+      }
+    }
+  ],
+  "output_changes": {}
+}

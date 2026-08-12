@@ -1,0 +1,36 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.8",
+  "planned_values": {
+    "root_module": {
+      "resources": []
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_s3_bucket_policy.assets",
+      "mode": "managed",
+      "type": "aws_s3_bucket_policy",
+      "name": "assets",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "update"
+        ],
+        "before": {
+          "bucket": "acme-prod-assets",
+          "policy": "{\"Version\":\"2012-10-17\"}"
+        },
+        "after": {
+          "bucket": "acme-prod-assets"
+        },
+        "after_unknown": {
+          "policy": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": false
+      }
+    }
+  ],
+  "output_changes": {}
+}

@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Wrapper so the plugin's agents and skill can call `pyrrho` from the Bash tool
+# without the user having to pip install anything first.
+#
+# Claude Code adds a plugin's bin/ directory to PATH while the plugin is
+# enabled, so this file is what `pyrrho ...` resolves to inside a session.
+#
+# Resolution order:
+#   1. A pyrrho already on PATH ahead of this wrapper, if PYRRHO_USE_INSTALLED=1
+#   2. The copy of the package that ships inside this plugin
+#
+# Override the interpreter with PYRRHO_PYTHON if python3 is not the right one.
+
+set -euo pipefail
+
+plugin_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+python_bin="${PYRRHO_PYTHON:-python3}"
+
+if ! command -v "$python_bin" >/dev/null 2>&1; then
+  echo "pyrrho: $python_bin not found. Set PYRRHO_PYTHON to a Python 3.10+ interpreter." >&2
+  exit 2
+fi
+
+if [ "${PYRRHO_USE_INSTALLED:-0}" = "1" ]; then
+  installed="$(command -v pyrrho 2>/dev/null || true)"
+  if [ -n "$installed" ] && [ "$installed" != "${BASH_SOURCE[0]}" ]; then
+    exec "$installed" "$@"
+  fi
+fi
+
+if [ ! -d "$plugin_root/pyrrho" ]; then
+  echo "pyrrho: package not found at $plugin_root/pyrrho" >&2
+  exit 2
+fi
+
+PYTHONPATH="$plugin_root${PYTHONPATH:+:$PYTHONPATH}" exec "$python_bin" -m pyrrho.cli "$@"

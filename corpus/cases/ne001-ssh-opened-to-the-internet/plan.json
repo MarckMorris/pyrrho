@@ -1,0 +1,75 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.8",
+  "planned_values": {
+    "root_module": {
+      "resources": []
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_security_group.bastion",
+      "mode": "managed",
+      "type": "aws_security_group",
+      "name": "bastion",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "update"
+        ],
+        "before": {
+          "name": "bastion",
+          "description": "Managed by Terraform: bastion",
+          "vpc_id": "vpc-0a1b2c3d4e5f60718",
+          "ingress": [
+            {
+              "from_port": 22,
+              "to_port": 22,
+              "protocol": "tcp",
+              "cidr_blocks": [
+                "203.0.113.0/24"
+              ],
+              "ipv6_cidr_blocks": [],
+              "prefix_list_ids": [],
+              "security_groups": [],
+              "self": false,
+              "description": "SSH from the office"
+            }
+          ],
+          "egress": [],
+          "tags": {
+            "ManagedBy": "terraform"
+          }
+        },
+        "after": {
+          "name": "bastion",
+          "description": "Managed by Terraform: bastion",
+          "vpc_id": "vpc-0a1b2c3d4e5f60718",
+          "ingress": [
+            {
+              "from_port": 22,
+              "to_port": 22,
+              "protocol": "tcp",
+              "cidr_blocks": [
+                "0.0.0.0/0"
+              ],
+              "ipv6_cidr_blocks": [],
+              "prefix_list_ids": [],
+              "security_groups": [],
+              "self": false,
+              "description": "SSH from the office"
+            }
+          ],
+          "egress": [],
+          "tags": {
+            "ManagedBy": "terraform"
+          }
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": false
+      }
+    }
+  ],
+  "output_changes": {}
+}

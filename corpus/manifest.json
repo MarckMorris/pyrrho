@@ -1,0 +1,478 @@
+{
+  "format": "pyrrho-corpus/v1",
+  "terraform_version": "1.9.8",
+  "plan_format_version": "1.2",
+  "counts": {
+    "total": 27,
+    "dangerous": 23,
+    "benign_controls": 4
+  },
+  "cases": [
+    {
+      "id": "ne001-ssh-opened-to-the-internet",
+      "title": "Bastion security group opened to 0.0.0.0/0 on SSH",
+      "why": "The most common real incident. Someone is locked out, widens the rule to unblock themselves, and the temporary fix is never reverted.",
+      "analyzer": "network-exposure",
+      "benign": false,
+      "expect": [
+        "NE001"
+      ],
+      "forbid": [
+        "NE002"
+      ],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/ne001-ssh-opened-to-the-internet/plan.json",
+      "terraform": "cases/ne001-ssh-opened-to-the-internet/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "ne002-all-ports-all-protocols-from-anywhere",
+      "title": "New security group allowing every protocol on every port from anywhere",
+      "why": "Written during an outage to rule out the network as a cause, then left in place because the outage had a different root cause and nobody revisited it.",
+      "analyzer": "network-exposure",
+      "benign": false,
+      "expect": [
+        "NE002"
+      ],
+      "forbid": [],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/ne002-all-ports-all-protocols-from-anywhere/plan.json",
+      "terraform": "cases/ne002-all-ports-all-protocols-from-anywhere/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "ne003-postgres-exposed-via-modern-rule-resource",
+      "title": "PostgreSQL exposed to the internet through aws_vpc_security_group_ingress_rule",
+      "why": "The newer singular rule resource uses different attribute names (cidr_ipv4, ip_protocol). Scanners written against the inline block shape read it as having no rules at all and report nothing.",
+      "analyzer": "network-exposure",
+      "benign": false,
+      "expect": [
+        "NE001"
+      ],
+      "forbid": [],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/ne003-postgres-exposed-via-modern-rule-resource/plan.json",
+      "terraform": "cases/ne003-postgres-exposed-via-modern-rule-resource/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "ne004-source-range-widened-to-a-slash-8",
+      "title": "MySQL source range widened from a /24 to a /8",
+      "why": "The diff shows one string changing and still contains a CIDR, so it reads as scoped. It admits sixteen million more addresses than it did.",
+      "analyzer": "network-exposure",
+      "benign": false,
+      "expect": [
+        "NE004"
+      ],
+      "forbid": [
+        "NE001",
+        "NE002"
+      ],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/ne004-source-range-widened-to-a-slash-8/plan.json",
+      "terraform": "cases/ne004-source-range-widened-to-a-slash-8/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "ne005-s3-public-access-guard-disabled",
+      "title": "S3 block_public_policy turned off",
+      "why": "Disabling the guard exposes nothing by itself, which is exactly why it gets approved. The bucket policy that makes it matter arrives in a later change.",
+      "analyzer": "network-exposure",
+      "benign": false,
+      "expect": [
+        "NE005"
+      ],
+      "forbid": [],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/ne005-s3-public-access-guard-disabled/plan.json",
+      "terraform": "cases/ne005-s3-public-access-guard-disabled/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "ne006-rds-made-publicly-accessible",
+      "title": "Production database given a public endpoint",
+      "why": "Usually done to let a BI tool or a contractor connect without setting up peering. The security group becomes the only remaining control.",
+      "analyzer": "network-exposure",
+      "benign": false,
+      "expect": [
+        "NE006"
+      ],
+      "forbid": [],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/ne006-rds-made-publicly-accessible/plan.json",
+      "terraform": "cases/ne006-rds-made-publicly-accessible/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "ne007-internal-load-balancer-made-public",
+      "title": "Internal load balancer flipped to internet-facing",
+      "why": "A one-character diff, false to true, that changes the reachability of every target behind the load balancer, including targets added later by other teams.",
+      "analyzer": "network-exposure",
+      "benign": false,
+      "expect": [
+        "NE007"
+      ],
+      "forbid": [],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/ne007-internal-load-balancer-made-public/plan.json",
+      "terraform": "cases/ne007-internal-load-balancer-made-public/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "ne008-network-acl-allow-all-breaks-segmentation",
+      "title": "Network ACL entry allowing 0.0.0.0/0 into a private subnet",
+      "why": "The network ACL is the subnet's independent boundary and the only control still standing when a security group is wrong. An allow-all entry removes the second layer while the first still looks correct.",
+      "analyzer": "network-exposure",
+      "benign": false,
+      "expect": [
+        "NE008"
+      ],
+      "forbid": [],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/ne008-network-acl-allow-all-breaks-segmentation/plan.json",
+      "terraform": "cases/ne008-network-acl-allow-all-breaks-segmentation/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "ne009-unrestricted-egress-added",
+      "title": "Unrestricted egress added to a workload security group",
+      "why": "Copied from the provider documentation's example block, which uses 0.0.0.0/0 on protocol -1. It is the path data leaves by.",
+      "analyzer": "network-exposure",
+      "benign": false,
+      "expect": [
+        "NE009"
+      ],
+      "forbid": [
+        "NE001",
+        "NE002"
+      ],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/ne009-unrestricted-egress-added/plan.json",
+      "terraform": "cases/ne009-unrestricted-egress-added/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "ne010-eks-api-server-public",
+      "title": "EKS control plane endpoint made public with no allow-list",
+      "why": "Enabled to make kubectl work from a laptop. The Kubernetes API is then internet-reachable with IAM as the only barrier.",
+      "analyzer": "network-exposure",
+      "benign": false,
+      "expect": [
+        "NE010"
+      ],
+      "forbid": [],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/ne010-eks-api-server-public/plan.json",
+      "terraform": "cases/ne010-eks-api-server-public/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "ne011-private-subnet-starts-assigning-public-ips",
+      "title": "Subnet switched to auto-assign public IPs",
+      "why": "Changes the character of every instance launched into the subnet from then on, including instances created by autoscaling long after this review.",
+      "analyzer": "network-exposure",
+      "benign": false,
+      "expect": [
+        "NE011"
+      ],
+      "forbid": [],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/ne011-private-subnet-starts-assigning-public-ips/plan.json",
+      "terraform": "cases/ne011-private-subnet-starts-assigning-public-ips/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "ne012-ingress-rules-unknown-until-apply",
+      "title": "Security group whose rules are computed at apply time",
+      "why": "The rules come from a module output that Terraform cannot resolve during plan. A reviewer sees an empty ingress list and approves it. The tool has to say it cannot review this rather than say it found nothing.",
+      "analyzer": "network-exposure",
+      "benign": false,
+      "expect": [
+        "NE012"
+      ],
+      "forbid": [
+        "NE001",
+        "NE002",
+        "NE003"
+      ],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/ne012-ingress-rules-unknown-until-apply/plan.json",
+      "terraform": "cases/ne012-ingress-rules-unknown-until-apply/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "ne013-app-port-exposed-past-the-load-balancer",
+      "title": "Application port 8080 opened directly to the internet",
+      "why": "Added to debug a load balancer health check. It routes around the load balancer, and with it TLS termination, the WAF and the access logs. The port is not a database port, so a rule that only knows about well-known services says nothing at all.",
+      "analyzer": "network-exposure",
+      "benign": false,
+      "expect": [
+        "NE003"
+      ],
+      "forbid": [
+        "NE001",
+        "NE002"
+      ],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/ne013-app-port-exposed-past-the-load-balancer/plan.json",
+      "terraform": "cases/ne013-app-port-exposed-past-the-load-balancer/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "rd001-production-database-destroyed",
+      "title": "Production database destroyed because its block was deleted",
+      "why": "A module refactor removes a resource block. Terraform renders one line with a minus sign, and the data is not in version control.",
+      "analyzer": "real-diff",
+      "benign": false,
+      "expect": [
+        "RD001"
+      ],
+      "forbid": [
+        "RD002"
+      ],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/rd001-production-database-destroyed/plan.json",
+      "terraform": "cases/rd001-production-database-destroyed/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "rd002-database-replaced-by-an-immutable-attribute",
+      "title": "Database replaced because an immutable attribute changed",
+      "why": "Changing the subnet group forces recreation. Terraform shows -/+ and the reviewer reads it as an update. The new instance comes up empty.",
+      "analyzer": "real-diff",
+      "benign": false,
+      "expect": [
+        "RD002"
+      ],
+      "forbid": [
+        "RD001"
+      ],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/rd002-database-replaced-by-an-immutable-attribute/plan.json",
+      "terraform": "cases/rd002-database-replaced-by-an-immutable-attribute/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "rd003-nat-gateway-replaced-with-downtime",
+      "title": "NAT gateway replaced destroy-first, cutting egress for the subnet",
+      "why": "Without create_before_destroy there is a window with no NAT gateway. Every instance in the private subnet loses outbound connectivity for the duration.",
+      "analyzer": "real-diff",
+      "benign": false,
+      "expect": [
+        "RD003"
+      ],
+      "forbid": [],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/rd003-nat-gateway-replaced-with-downtime/plan.json",
+      "terraform": "cases/rd003-nat-gateway-replaced-with-downtime/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "rd004-deletion-protection-and-final-snapshot-removed",
+      "title": "Deletion protection disabled and final snapshot skipped in one change",
+      "why": "Neither attribute changes anything on apply. Together they remove both controls that would have stopped, or made recoverable, the next destroy.",
+      "analyzer": "real-diff",
+      "benign": false,
+      "expect": [
+        "RD004"
+      ],
+      "forbid": [
+        "RD001",
+        "RD002"
+      ],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/rd004-deletion-protection-and-final-snapshot-removed/plan.json",
+      "terraform": "cases/rd004-deletion-protection-and-final-snapshot-removed/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "rd005-plan-computed-against-drifted-state",
+      "title": "Plan computed against a state that no longer matches reality",
+      "why": "Someone changed the security group in the console. Every diff in this plan is a diff against a picture that is already wrong, and applying it silently reverts their change.",
+      "analyzer": "real-diff",
+      "benign": false,
+      "expect": [
+        "RD005"
+      ],
+      "forbid": [],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/rd005-plan-computed-against-drifted-state/plan.json",
+      "terraform": "cases/rd005-plan-computed-against-drifted-state/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "rd006-sensitive-value-rotated-invisibly",
+      "title": "Sensitive value changes with the diff redacted",
+      "why": "Terraform prints (sensitive value) on both sides. The change is real, unreviewable from the plan, and anything still holding the old value breaks at apply.",
+      "analyzer": "real-diff",
+      "benign": false,
+      "expect": [
+        "RD006"
+      ],
+      "forbid": [],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/rd006-sensitive-value-rotated-invisibly/plan.json",
+      "terraform": "cases/rd006-sensitive-value-rotated-invisibly/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "rd007-plan-touches-resources-outside-the-stated-scope",
+      "title": "A security group change that also rewrites an IAM role",
+      "why": "The pull request says it adjusts a security group. The plan also modifies an IAM role, which is the kind of thing that gets approved by association with the change that was actually reviewed.",
+      "analyzer": "real-diff",
+      "benign": false,
+      "expect": [
+        "RD007"
+      ],
+      "forbid": [],
+      "claim": [
+        "aws_security_group.*"
+      ],
+      "max_severity": null,
+      "plan": "cases/rd007-plan-touches-resources-outside-the-stated-scope/plan.json",
+      "terraform": "cases/rd007-plan-touches-resources-outside-the-stated-scope/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "rd008-bucket-policy-unknown-until-apply",
+      "title": "Bucket policy that Terraform cannot resolve before apply",
+      "why": "The policy is rendered from a data source that resolves at apply time. Approving the plan approves a policy document nobody has read.",
+      "analyzer": "real-diff",
+      "benign": false,
+      "expect": [
+        "RD008"
+      ],
+      "forbid": [],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/rd008-bucket-policy-unknown-until-apply/plan.json",
+      "terraform": "cases/rd008-bucket-policy-unknown-until-apply/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "rd009-kms-key-destroyed-with-encrypted-data-behind-it",
+      "title": "KMS key destroyed while data encrypted under it remains",
+      "why": "Deleting the key is a single line. Everything encrypted with it becomes permanently unreadable, including backups taken before the change.",
+      "analyzer": "real-diff",
+      "benign": false,
+      "expect": [
+        "RD001"
+      ],
+      "forbid": [],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/rd009-kms-key-destroyed-with-encrypted-data-behind-it/plan.json",
+      "terraform": "cases/rd009-kms-key-destroyed-with-encrypted-data-behind-it/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "rd010-log-group-replaced-losing-the-audit-trail",
+      "title": "CloudWatch log group replaced, discarding retained events",
+      "why": "Renaming a log group replaces it. The retained events go with the old one, which matters most in exactly the situation you need them for.",
+      "analyzer": "real-diff",
+      "benign": false,
+      "expect": [
+        "RD002"
+      ],
+      "forbid": [],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/rd010-log-group-replaced-losing-the-audit-trail/plan.json",
+      "terraform": "cases/rd010-log-group-replaced-losing-the-audit-trail/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "nc001-https-served-to-the-public-on-purpose",
+      "title": "A public web server serving 443 to the internet",
+      "why": "This is what a correct public service looks like. A tool that calls this critical is a tool people turn off.",
+      "analyzer": "network-exposure",
+      "benign": true,
+      "expect": [],
+      "forbid": [
+        "NE001",
+        "NE002",
+        "NE004"
+      ],
+      "claim": [],
+      "max_severity": "low",
+      "plan": "cases/nc001-https-served-to-the-public-on-purpose/plan.json",
+      "terraform": "cases/nc001-https-served-to-the-public-on-purpose/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "nc002-preexisting-exposure-left-untouched",
+      "title": "A tag change on a security group that was already open to the world",
+      "why": "The single most important negative control. The exposure is real but it is not this change's doing. A tool that blocks this pull request is blocking the wrong pull request, and teaches the team that its findings are noise.",
+      "analyzer": "network-exposure",
+      "benign": true,
+      "expect": [],
+      "forbid": [
+        "NE001",
+        "NE002",
+        "NE003",
+        "NE004"
+      ],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/nc002-preexisting-exposure-left-untouched/plan.json",
+      "terraform": "cases/nc002-preexisting-exposure-left-untouched/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "nc003-source-range-narrowed",
+      "title": "An SSH rule narrowed from the internet to the VPN range",
+      "why": "A strict improvement. Reporting it would mean the tool cannot tell the direction of a change, only that one happened.",
+      "analyzer": "network-exposure",
+      "benign": true,
+      "expect": [],
+      "forbid": [
+        "NE001",
+        "NE002",
+        "NE003",
+        "NE004"
+      ],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/nc003-source-range-narrowed/plan.json",
+      "terraform": "cases/nc003-source-range-narrowed/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "nc004-stateless-resource-replaced",
+      "title": "A launch template replaced, which loses nothing",
+      "why": "Replacement is only alarming when something irreplaceable goes with it. Treating every -/+ as critical is how a tool becomes background noise.",
+      "analyzer": "real-diff",
+      "benign": true,
+      "expect": [],
+      "forbid": [
+        "RD001",
+        "RD002",
+        "RD003"
+      ],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/nc004-stateless-resource-replaced/plan.json",
+      "terraform": "cases/nc004-stateless-resource-replaced/main.tf",
+      "verified_against_terraform": false
+    }
+  ]
+}
