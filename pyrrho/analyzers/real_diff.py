@@ -93,6 +93,49 @@ INVERSE_GUARDS: dict[str, tuple[str, ...]] = {
     "aws_ecr_repository": ("force_delete",),
 }
 
+# Turning any of these off, or destroying them, removes the record of what
+# happens next. It is the standard first move, and it is invisible to a check
+# that only asks whether the end state violates a policy: after the change there
+# is simply no trail resource left to have an opinion about.
+AUDIT_TRAIL: dict[str, tuple[str, str]] = {
+    "aws_cloudtrail": ("enable_logging", "API call history for the account"),
+    "aws_flow_log": ("", "VPC flow logs, the record of what talked to what"),
+    "aws_config_configuration_recorder": ("", "the configuration history AWS Config keeps"),
+    "aws_config_configuration_recorder_status": ("is_enabled", "AWS Config recording"),
+    "aws_guardduty_detector": ("enable", "GuardDuty threat detection"),
+    "aws_securityhub_account": ("", "Security Hub findings aggregation"),
+    "aws_s3_bucket_logging": ("", "S3 server access logs"),
+    # aws_cloudwatch_log_group is deliberately absent: it is already in STATEFUL,
+    # so destroying it reports RD001. Listing it here too would produce two
+    # findings for one destroy.
+}
+
+# Attributes that decide whether you can get back to where you were. Each is a
+# one-token diff that changes nothing on apply, which is exactly why it reads as
+# harmless in review.
+RECOVERABILITY: dict[str, dict[str, str]] = {
+    "aws_db_instance": {
+        "backup_retention_period": "zero disables automated backups and deletes the ones already taken",
+        "delete_automated_backups": "true discards retained backups when the instance goes",
+        "copy_tags_to_snapshot": "",
+    },
+    "aws_rds_cluster": {
+        "backup_retention_period": "zero disables automated backups and deletes the ones already taken",
+    },
+    "aws_s3_bucket_versioning": {
+        "status": "suspending versioning means an overwrite is final",
+    },
+    "aws_cloudwatch_log_group": {
+        "retention_in_days": "shortening retention discards history you may need for an incident",
+    },
+    "aws_dynamodb_table": {
+        "point_in_time_recovery": "disabling PITR removes the only way back from a bad write",
+    },
+    "aws_efs_file_system": {
+        "backup_policy": "",
+    },
+}
+
 # Attributes worth flagging when the plan cannot resolve them before apply.
 SECURITY_RELEVANT_UNKNOWNS: tuple[str, ...] = (
     "policy",
@@ -130,6 +173,22 @@ def _truthy(value: Any) -> bool:
     return False
 
 
+def _as_int(value: Any, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _pitr_enabled(value: Any) -> bool:
+    """point_in_time_recovery is a nested block, so it arrives as a list."""
+    if isinstance(value, list):
+        return any(_truthy(v.get("enabled")) for v in value if isinstance(v, dict))
+    if isinstance(value, dict):
+        return _truthy(value.get("enabled"))
+    return _truthy(value)
+
+
 def _reason(rc: ResourceChange) -> str:
     return ACTION_REASONS.get(rc.action_reason, rc.action_reason or "not stated by Terraform")
 
@@ -162,6 +221,8 @@ class RealDiff(Analyzer):
             findings.extend(self._guards(rc))
             findings.extend(self._sensitive(rc))
             findings.extend(self._unknowns(rc))
+            findings.extend(self._audit_trail(rc))
+            findings.extend(self._recoverability(rc))
         findings.extend(self._drift(plan))
         findings.extend(self._scope(plan))
         return findings
@@ -368,6 +429,103 @@ class RealDiff(Analyzer):
                 ),
             )
         ]
+
+    def _audit_trail(self, rc: ResourceChange) -> list[Finding]:
+        """The record of what happens is being destroyed or switched off."""
+        if rc.type not in AUDIT_TRAIL:
+            return []
+        toggle, what = AUDIT_TRAIL[rc.type]
+        if not what:
+            return []
+
+        destroyed = rc.destroys_data
+        switched_off = bool(toggle) and _truthy(rc.prior(toggle)) and not _truthy(rc.value(toggle))
+        if not destroyed and not switched_off:
+            return []
+
+        action = "destroyed" if destroyed else "switched off"
+        return [
+            self.finding(
+                "RD009",
+                "Audit or logging trail removed",
+                Severity.HIGH,
+                rc.address,
+                f"This plan leaves {what} {action}. Nothing else in the change needs to be "
+                f"wrong for that to matter: it removes the ability to find out later what "
+                f"any of the rest of it did.",
+                evidence={
+                    "actions": list(rc.actions),
+                    "action_reason": _reason(rc),
+                    "resource_type": rc.type,
+                    "toggle": (
+                        {toggle: {"before": rc.prior(toggle), "after": rc.value(toggle)}}
+                        if toggle
+                        else None
+                    ),
+                    "name": rc.prior("name") or rc.value("name"),
+                },
+                remediation=(
+                    "Keep the trail. If it is being replaced by something else in the same "
+                    "change, say which resource takes over and confirm the handover leaves no "
+                    "gap. If the destination bucket is the problem, fix the bucket."
+                ),
+                key=rc.type,
+            )
+        ]
+
+    def _recoverability(self, rc: ResourceChange) -> list[Finding]:
+        """A safety net removed without anything appearing to change."""
+        attributes = RECOVERABILITY.get(rc.type)
+        if not attributes:
+            return []
+
+        findings: list[Finding] = []
+        for key, why in attributes.items():
+            if not why or (key not in rc.before and key not in rc.after):
+                continue
+
+            before_value = rc.prior(key)
+            after_value = rc.value(key)
+            if before_value == after_value:
+                continue
+
+            weakened = False
+            if key == "backup_retention_period":
+                weakened = _as_int(after_value, 0) < _as_int(before_value, 0)
+            elif key == "retention_in_days":
+                # Zero means "keep forever" for a CloudWatch log group, so it is
+                # the one value that is not a reduction.
+                after_days = _as_int(after_value, 0)
+                before_days = _as_int(before_value, 0)
+                weakened = before_days != 0 and (after_days == 0 or after_days < before_days) and after_days != 0
+            elif key == "status":
+                weakened = str(before_value).lower() == "enabled" and str(after_value).lower() != "enabled"
+            elif key == "point_in_time_recovery":
+                weakened = _pitr_enabled(before_value) and not _pitr_enabled(after_value)
+            elif key == "delete_automated_backups":
+                weakened = not _truthy(before_value) and _truthy(after_value)
+
+            if not weakened:
+                continue
+
+            findings.append(
+                self.finding(
+                    "RD010",
+                    "Recoverability weakened",
+                    Severity.HIGH,
+                    rc.address,
+                    f"{key} goes from {before_value!r} to {after_value!r}: {why}. Applying this "
+                    f"changes nothing you can see. It changes what is possible after the next "
+                    f"mistake.",
+                    evidence={key: {"before": before_value, "after": after_value}},
+                    remediation=(
+                        f"Leave {key} as it was unless someone has confirmed the restore path "
+                        f"that replaces it, and written down where it is."
+                    ),
+                    key=key,
+                )
+            )
+        return findings
 
     # -- plan-level -------------------------------------------------------
 

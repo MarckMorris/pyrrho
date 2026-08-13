@@ -1,7 +1,7 @@
 {
   "name": "pyrrho",
   "description": "Adversarial review of Terraform plans before they are applied. Reports what the plan really does and what it newly exposes, with the evidence for every claim.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": {
     "name": "Marcos Morris"
   },

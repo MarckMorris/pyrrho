@@ -1,0 +1,61 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.8",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_launch_template.workers",
+          "mode": "managed",
+          "type": "aws_launch_template",
+          "name": "workers",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "name_prefix": "workers-",
+            "network_interfaces": [
+              {
+                "associate_public_ip_address": "true"
+              }
+            ]
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_launch_template.workers",
+      "mode": "managed",
+      "type": "aws_launch_template",
+      "name": "workers",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "update"
+        ],
+        "before": {
+          "name_prefix": "workers-",
+          "network_interfaces": [
+            {
+              "associate_public_ip_address": "false"
+            }
+          ]
+        },
+        "after": {
+          "name_prefix": "workers-",
+          "network_interfaces": [
+            {
+              "associate_public_ip_address": "true"
+            }
+          ]
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": false
+      }
+    }
+  ],
+  "output_changes": {}
+}

@@ -1,0 +1,85 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.8",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_vpc_peering_connection.to_analytics",
+          "mode": "managed",
+          "type": "aws_vpc_peering_connection",
+          "name": "to_analytics",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "vpc_id": "vpc-0a1b2c3d4e5f60718",
+            "peer_vpc_id": "vpc-0analytics000000",
+            "peer_owner_id": "444455556666",
+            "auto_accept": true
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "aws_route.to_analytics",
+          "mode": "managed",
+          "type": "aws_route",
+          "name": "to_analytics",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "route_table_id": "rtb-0private00000000",
+            "destination_cidr_block": "10.50.0.0/16",
+            "vpc_peering_connection_id": "pcx-0abc123456789def0"
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_vpc_peering_connection.to_analytics",
+      "mode": "managed",
+      "type": "aws_vpc_peering_connection",
+      "name": "to_analytics",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "vpc_id": "vpc-0a1b2c3d4e5f60718",
+          "peer_vpc_id": "vpc-0analytics000000",
+          "peer_owner_id": "444455556666",
+          "auto_accept": true
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": false
+      }
+    },
+    {
+      "address": "aws_route.to_analytics",
+      "mode": "managed",
+      "type": "aws_route",
+      "name": "to_analytics",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "route_table_id": "rtb-0private00000000",
+          "destination_cidr_block": "10.50.0.0/16",
+          "vpc_peering_connection_id": "pcx-0abc123456789def0"
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": false
+      }
+    }
+  ],
+  "output_changes": {}
+}

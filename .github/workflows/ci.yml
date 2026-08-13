@@ -194,6 +194,47 @@ jobs:
           print('attestation signed, verdict', doc['verdict'])
           "
 
+  action:
+    name: The Action reviews a plan end to end
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # Dogfooding. The Action is the thing other repositories will use, so it
+      # is exercised here on every push rather than the first time a stranger
+      # tries it. A corpus case is used as the plan because it is guaranteed to
+      # produce findings, which is what makes the summary and the comment worth
+      # looking at.
+      - name: Review a deliberately dangerous plan
+        id: review
+        uses: ./
+        continue-on-error: true
+        with:
+          plan: corpus/cases/ne019-ingress-from-a-security-group-that-is-itself-open/plan.json
+          sarif: ""
+          comment-on-pr: "true"
+          job-summary: "true"
+
+      - name: The Action must have blocked, and said why
+        run: |
+          test "${{ steps.review.outputs.verdict }}" = "block" || {
+            echo "expected verdict 'block', got '${{ steps.review.outputs.verdict }}'"; exit 1; }
+          test "${{ steps.review.outputs.worst-severity }}" = "high" || {
+            echo "expected worst severity 'high'"; exit 1; }
+          grep -q "NE014" pyrrho-report.md || { echo "the report does not mention NE014"; exit 1; }
+          echo "verdict=${{ steps.review.outputs.verdict }} findings=${{ steps.review.outputs.findings }}"
+
+      - name: And a clean plan must pass
+        uses: ./
+        with:
+          plan: corpus/cases/nc002-preexisting-exposure-left-untouched/plan.json
+          sarif: ""
+          comment-on-pr: "false"
+          job-summary: "false"
+
   plugin:
     name: Plugin structure is valid
     runs-on: ubuntu-latest

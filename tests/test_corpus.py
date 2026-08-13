@@ -258,13 +258,33 @@ class TestBenchmark:
             for rule_id in case["expect"]:
                 assert f"`{rule_id}`" in readme, f"{rule_id} is not in the README rule table"
 
-    def test_the_readme_states_the_unimplemented_analyzers_up_front(self):
+    def test_the_readme_states_what_is_missing_up_front(self):
         """Rule: if something is not implemented, the README says so on screen one."""
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         first_screen = readme[: readme.index("## Why it exists")]
         assert "What is not here" in first_screen
-        for absent in ("blast-radius", "privilege-escalation", "compliance-drift"):
-            assert absent in first_screen, f"{absent} is not declared missing up front"
+
+        # The named-but-unbuilt analyzers from the original design.
+        planned = {"blast-radius", "compliance-drift", "privilege-escalation"}
+        built = set(REGISTRY)
+        for name in sorted(planned - built):
+            assert name in first_screen, f"{name} is not declared missing up front"
+
+        # And the inverse: something that exists must not be listed as missing.
+        not_here = first_screen[first_screen.index("What is not here") :]
+        table = not_here[: not_here.index("Also not covered")]
+        for name in sorted(built):
+            assert name not in table, (
+                f"{name} is implemented but still listed as not implemented"
+            )
+
+    def test_the_readme_counts_the_analyzers_correctly(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        words = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five"}
+        expected = words[len(REGISTRY)]
+        assert f"**{expected} analyzers" in readme, (
+            f"README should say '{expected} analyzers'; there are {len(REGISTRY)}"
+        )
 
     def test_the_generator_is_idempotent(self):
         """Regenerating the corpus must not produce a diff."""

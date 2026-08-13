@@ -365,3 +365,193 @@ class TestScope:
             claim=["aws_security_group.*", "aws_iam_role.*"],
         )
         assert findings == []
+
+
+class TestAuditTrail:
+    def test_destroying_a_cloudtrail_is_reported(self):
+        findings = run(
+            [
+                change(
+                    "aws_cloudtrail.audit",
+                    "aws_cloudtrail",
+                    ["delete"],
+                    before={"name": "account-audit", "enable_logging": True},
+                    after=None,
+                )
+            ]
+        )
+        assert rule_ids(findings) == {"RD009"}
+        assert findings[0].severity is Severity.HIGH
+
+    def test_switching_logging_off_is_reported_without_a_destroy(self):
+        findings = run(
+            [
+                change(
+                    "aws_cloudtrail.audit",
+                    "aws_cloudtrail",
+                    ["update"],
+                    before={"name": "account-audit", "enable_logging": True},
+                    after={"name": "account-audit", "enable_logging": False},
+                )
+            ]
+        )
+        assert rule_ids(findings) == {"RD009"}
+        assert findings[0].evidence["toggle"]["enable_logging"]["after"] is False
+
+    def test_switching_logging_on_is_not_reported(self):
+        findings = run(
+            [
+                change(
+                    "aws_cloudtrail.audit",
+                    "aws_cloudtrail",
+                    ["update"],
+                    before={"name": "a", "enable_logging": False},
+                    after={"name": "a", "enable_logging": True},
+                )
+            ]
+        )
+        assert findings == []
+
+    def test_destroying_vpc_flow_logs_is_reported(self):
+        findings = run(
+            [change("aws_flow_log.vpc", "aws_flow_log", ["delete"], before={"id": "fl-0a"}, after=None)]
+        )
+        assert rule_ids(findings) == {"RD009"}
+
+    def test_disabling_guardduty_is_reported(self):
+        findings = run(
+            [
+                change(
+                    "aws_guardduty_detector.d",
+                    "aws_guardduty_detector",
+                    ["update"],
+                    before={"enable": True},
+                    after={"enable": False},
+                )
+            ]
+        )
+        assert rule_ids(findings) == {"RD009"}
+
+    def test_a_log_group_destroy_reports_once_not_twice(self):
+        """It is already in STATEFUL; listing it as a trail too would duplicate."""
+        findings = run(
+            [
+                change(
+                    "aws_cloudwatch_log_group.audit",
+                    "aws_cloudwatch_log_group",
+                    ["delete"],
+                    before={"name": "/acme/audit"},
+                    after=None,
+                )
+            ]
+        )
+        assert rule_ids(findings) == {"RD001"}
+
+
+class TestRecoverability:
+    def db(self, before, after):
+        return change(
+            "aws_db_instance.orders",
+            "aws_db_instance",
+            ["update"],
+            before={"identifier": "orders", **before},
+            after={"identifier": "orders", **after},
+        )
+
+    def test_setting_backup_retention_to_zero_is_reported(self):
+        findings = run([self.db({"backup_retention_period": 35}, {"backup_retention_period": 0})])
+        assert rule_ids(findings) == {"RD010"}
+        assert findings[0].severity is Severity.HIGH
+
+    def test_increasing_backup_retention_is_not_reported(self):
+        assert run([self.db({"backup_retention_period": 7}, {"backup_retention_period": 35})]) == []
+
+    def test_enabling_delete_automated_backups_is_reported(self):
+        findings = run([self.db({"delete_automated_backups": False}, {"delete_automated_backups": True})])
+        assert rule_ids(findings) == {"RD010"}
+
+    def test_suspending_bucket_versioning_is_reported(self):
+        findings = run(
+            [
+                change(
+                    "aws_s3_bucket_versioning.v",
+                    "aws_s3_bucket_versioning",
+                    ["update"],
+                    before={"status": "Enabled"},
+                    after={"status": "Suspended"},
+                )
+            ]
+        )
+        assert rule_ids(findings) == {"RD010"}
+
+    def test_enabling_bucket_versioning_is_not_reported(self):
+        findings = run(
+            [
+                change(
+                    "aws_s3_bucket_versioning.v",
+                    "aws_s3_bucket_versioning",
+                    ["update"],
+                    before={"status": "Suspended"},
+                    after={"status": "Enabled"},
+                )
+            ]
+        )
+        assert findings == []
+
+    def test_shortening_log_retention_is_reported(self):
+        findings = run(
+            [
+                change(
+                    "aws_cloudwatch_log_group.g",
+                    "aws_cloudwatch_log_group",
+                    ["update"],
+                    before={"name": "g", "retention_in_days": 365},
+                    after={"name": "g", "retention_in_days": 1},
+                )
+            ]
+        )
+        assert rule_ids(findings) == {"RD010"}
+
+    def test_setting_log_retention_to_forever_is_not_a_reduction(self):
+        # Zero means "never expire" for a CloudWatch log group.
+        findings = run(
+            [
+                change(
+                    "aws_cloudwatch_log_group.g",
+                    "aws_cloudwatch_log_group",
+                    ["update"],
+                    before={"name": "g", "retention_in_days": 30},
+                    after={"name": "g", "retention_in_days": 0},
+                )
+            ]
+        )
+        assert findings == []
+
+    def test_disabling_point_in_time_recovery_is_reported(self):
+        findings = run(
+            [
+                change(
+                    "aws_dynamodb_table.t",
+                    "aws_dynamodb_table",
+                    ["update"],
+                    before={"name": "t", "point_in_time_recovery": [{"enabled": True}]},
+                    after={"name": "t", "point_in_time_recovery": [{"enabled": False}]},
+                )
+            ]
+        )
+        assert rule_ids(findings) == {"RD010"}
+
+    def test_an_unrelated_attribute_change_is_not_reported(self):
+        assert run([self.db({"instance_class": "db.t3.small"}, {"instance_class": "db.t3.large"})]) == []
+
+    def test_two_weakened_attributes_produce_two_trackable_findings(self):
+        findings = run(
+            [
+                self.db(
+                    {"backup_retention_period": 35, "delete_automated_backups": False},
+                    {"backup_retention_period": 0, "delete_automated_backups": True},
+                )
+            ]
+        )
+        assert len(findings) == 2
+        assert len({f.fingerprint for f in findings}) == 2

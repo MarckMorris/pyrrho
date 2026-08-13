@@ -1,0 +1,49 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.8",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_iam_role_policy.build",
+          "mode": "managed",
+          "type": "aws_iam_role_policy",
+          "name": "build",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "name": "build",
+            "policy": "{\"Version\": \"2012-10-17\", \"Statement\": [{\"Effect\": \"Allow\", \"Action\": [\"s3:GetObject\"], \"Resource\": \"*\"}, {\"Effect\": \"Allow\", \"Action\": [\"iam:CreatePolicyVersion\", \"iam:SetDefaultPolicyVersion\"], \"Resource\": [\"arn:aws:iam::111122223333:policy/*\"]}]}"
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_iam_role_policy.build",
+      "mode": "managed",
+      "type": "aws_iam_role_policy",
+      "name": "build",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "update"
+        ],
+        "before": {
+          "name": "build",
+          "policy": "{\"Version\": \"2012-10-17\", \"Statement\": [{\"Effect\": \"Allow\", \"Action\": [\"s3:GetObject\"], \"Resource\": \"*\"}]}"
+        },
+        "after": {
+          "name": "build",
+          "policy": "{\"Version\": \"2012-10-17\", \"Statement\": [{\"Effect\": \"Allow\", \"Action\": [\"s3:GetObject\"], \"Resource\": \"*\"}, {\"Effect\": \"Allow\", \"Action\": [\"iam:CreatePolicyVersion\", \"iam:SetDefaultPolicyVersion\"], \"Resource\": [\"arn:aws:iam::111122223333:policy/*\"]}]}"
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": false
+      }
+    }
+  ],
+  "output_changes": {}
+}

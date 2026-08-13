@@ -1,0 +1,221 @@
+name: "pyrrho"
+description: >-
+  Adversarially review a Terraform plan before it is applied. Reports what the
+  plan really does and what it newly exposes, with the evidence for every claim.
+author: "Marcos Morris"
+
+branding:
+  icon: "search"
+  color: "purple"
+
+inputs:
+  plan:
+    description: >-
+      Path to the plan JSON, produced by `terraform show -json tfplan.binary`.
+      pyrrho reads the JSON form, not HCL, because only the plan carries the
+      prior state that every judgement depends on.
+    required: true
+  fail-on:
+    description: >-
+      Severity at or above which the step fails: critical, high, medium, low or
+      info. Start at critical on an existing estate and tighten from there.
+    required: false
+    default: "high"
+  analyzers:
+    description: >-
+      Comma-separated analyzer names to run. Empty means all of them.
+      Available: network-exposure, privilege-escalation, real-diff.
+    required: false
+    default: ""
+  claim:
+    description: >-
+      Comma-separated fnmatch patterns describing what this change is declared
+      to touch, for example 'module.network.*,aws_security_group.*'. Anything
+      the plan touches that matches none of them is reported as out of scope.
+    required: false
+    default: ""
+  baseline:
+    description: >-
+      Path to a baseline file of accepted findings. They stay visible in the
+      report and stop affecting the exit code.
+    required: false
+    default: ""
+  sarif:
+    description: >-
+      Where to write the SARIF file. Upload it with
+      github/codeql-action/upload-sarif to get tracked alerts in the Security
+      tab. Set to an empty string to skip.
+    required: false
+    default: "pyrrho.sarif"
+  sarif-location:
+    description: >-
+      Repository path to anchor SARIF alerts to. Point it at the Terraform
+      source so alerts land on the code rather than on the plan file.
+    required: false
+    default: ""
+  attest:
+    description: >-
+      Where to write the signed record of what was reviewed. Set the
+      PYRRHO_ATTEST_KEY environment variable to sign it; without the key the
+      record is still written and marked unsigned.
+    required: false
+    default: ""
+  comment-on-pr:
+    description: >-
+      Post the verdict as a pull request comment, updating the same comment on
+      each push rather than adding a new one. Needs `pull-requests: write`.
+    required: false
+    default: "true"
+  job-summary:
+    description: "Write the verdict to the workflow run's job summary."
+    required: false
+    default: "true"
+  version:
+    description: >-
+      Version of pyrrho to install from PyPI. Leave as 'repo' to install the
+      checked-out copy, which is what this repository's own workflow does.
+    required: false
+    default: "repo"
+  python-version:
+    description: "Python version used to run pyrrho."
+    required: false
+    default: "3.12"
+
+outputs:
+  verdict:
+    description: "pass, warn or block."
+    value: ${{ steps.review.outputs.verdict }}
+  findings:
+    description: "Number of findings that count toward the verdict."
+    value: ${{ steps.review.outputs.findings }}
+  worst-severity:
+    description: "Highest severity among counted findings, or empty."
+    value: ${{ steps.review.outputs.worst }}
+  markdown:
+    description: "Path to the rendered markdown report."
+    value: ${{ steps.review.outputs.markdown }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install pyrrho
+      shell: bash
+      run: |
+        if [ "${{ inputs.version }}" = "repo" ]; then
+          python -m pip install --quiet "${{ github.action_path }}"
+        else
+          python -m pip install --quiet "pyrrho==${{ inputs.version }}"
+        fi
+
+    - name: Review the plan
+      id: review
+      shell: bash
+      run: |
+        # Everything that selects what to review. Both renderings share it, so
+        # the markdown and the JSON can never describe different reviews.
+        base=("${{ inputs.plan }}" --fail-on "${{ inputs.fail-on }}" --no-color)
+
+        IFS=',' read -ra names <<< "${{ inputs.analyzers }}"
+        for name in "${names[@]}"; do
+          trimmed="$(echo "$name" | xargs)"
+          [ -n "$trimmed" ] && base+=(--analyzer "$trimmed")
+        done
+
+        IFS=',' read -ra claims <<< "${{ inputs.claim }}"
+        for pattern in "${claims[@]}"; do
+          trimmed="$(echo "$pattern" | xargs)"
+          [ -n "$trimmed" ] && base+=(--claim "$trimmed")
+        done
+
+        [ -n "${{ inputs.baseline }}" ] && base+=(--baseline "${{ inputs.baseline }}")
+
+        # Files written once, by the run that also decides the exit code.
+        artifacts=()
+        [ -n "${{ inputs.sarif }}" ] && artifacts+=(--sarif "${{ inputs.sarif }}")
+        [ -n "${{ inputs.sarif-location }}" ] && artifacts+=(--sarif-location "${{ inputs.sarif-location }}")
+        [ -n "${{ inputs.attest }}" ] && artifacts+=(--attest "${{ inputs.attest }}")
+
+        # The exit code is captured rather than allowed to fail the step, so the
+        # summary and the pull request comment still get written when the review
+        # blocks. The last step in this action re-raises it.
+        set +e
+        pyrrho "${base[@]}" "${artifacts[@]}" --format json > pyrrho-report.json
+        code=$?
+        set -e
+
+        if [ "$code" -eq 2 ]; then
+          echo "pyrrho could not review the plan. Output:" >&2
+          cat pyrrho-report.json >&2 || true
+          exit 2
+        fi
+
+        pyrrho "${base[@]}" --format markdown > pyrrho-report.md
+
+        python - <<'PY' >> "$GITHUB_OUTPUT"
+        import json
+        with open("pyrrho-report.json", encoding="utf-8") as fh:
+            report = json.load(fh)
+        print(f"verdict={report['verdict']}")
+        print(f"findings={report['counted']}")
+        print(f"worst={report['worst_severity'] or ''}")
+        print("markdown=pyrrho-report.md")
+        PY
+
+    - name: Write the job summary
+      if: ${{ inputs.job-summary == 'true' && always() }}
+      shell: bash
+      run: |
+        if [ -s pyrrho-report.md ]; then
+          cat pyrrho-report.md >> "$GITHUB_STEP_SUMMARY"
+        fi
+
+    - name: Comment on the pull request
+      if: ${{ inputs.comment-on-pr == 'true' && github.event_name == 'pull_request' && always() }}
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          if (!fs.existsSync('pyrrho-report.md')) return;
+          const body = fs.readFileSync('pyrrho-report.md', 'utf8')
+            + '\n<!-- pyrrho-review -->';
+
+          // Update the existing comment rather than adding one per push. A
+          // review that appends a new comment every time trains people to
+          // collapse the whole thread.
+          const { data: comments } = await github.rest.issues.listComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number,
+          });
+          const previous = comments.find(
+            c => c.user.type === 'Bot' && c.body.includes('<!-- pyrrho-review -->')
+          );
+
+          if (previous) {
+            await github.rest.issues.updateComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: previous.id,
+              body,
+            });
+          } else {
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+          }
+
+    - name: Fail the job when the review says block
+      if: ${{ steps.review.outputs.verdict == 'block' }}
+      shell: bash
+      run: |
+        echo "pyrrho: ${{ steps.review.outputs.findings }} finding(s), worst ${{ steps.review.outputs.worst-severity }}." >&2
+        echo "Review the job summary or the pull request comment for the evidence." >&2
+        exit 1

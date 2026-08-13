@@ -1,0 +1,54 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.8",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_network_acl_rule.allow_vpc",
+          "mode": "managed",
+          "type": "aws_network_acl_rule",
+          "name": "allow_vpc",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "network_acl_id": "acl-0private000000000",
+            "rule_number": 110,
+            "egress": false,
+            "protocol": "-1",
+            "rule_action": "allow",
+            "cidr_block": "10.0.0.0/16"
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_network_acl_rule.allow_vpc",
+      "mode": "managed",
+      "type": "aws_network_acl_rule",
+      "name": "allow_vpc",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "network_acl_id": "acl-0private000000000",
+          "rule_number": 110,
+          "egress": false,
+          "protocol": "-1",
+          "rule_action": "allow",
+          "cidr_block": "10.0.0.0/16"
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": false
+      }
+    }
+  ],
+  "output_changes": {}
+}

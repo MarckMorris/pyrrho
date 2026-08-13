@@ -22,11 +22,15 @@ def finding(**kw):
 
 
 class TestRegistry:
-    def test_both_analyzers_are_registered(self):
-        assert core.available() == ["network-exposure", "real-diff"]
+    def test_every_analyzer_is_registered(self):
+        assert core.available() == [
+            "network-exposure",
+            "privilege-escalation",
+            "real-diff",
+        ]
 
     def test_resolve_with_no_names_returns_everything(self):
-        assert len(core.resolve(None)) == 2
+        assert len(core.resolve(None)) == len(core.available())
 
     def test_resolve_honours_a_single_name(self):
         resolved = core.resolve(["real-diff"])

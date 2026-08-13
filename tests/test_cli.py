@@ -270,3 +270,52 @@ class TestAgainstTheCorpus:
         report = cli.review(parsed, ["network-exposure"], [])
         assert {f.rule_id for f in report.findings} == {"NE001"}
         assert report.exceeds(Severity.HIGH)
+
+
+class TestMarkdownOutput:
+    """The rendering that lands in a pull request comment.
+
+    A review comment that opens with three screens of JSON is a review comment
+    nobody reads, so the verdict comes first and the evidence goes behind a fold.
+    """
+
+    def test_it_leads_with_the_verdict(self, tmp_path):
+        _, out, _ = run([open_ssh(tmp_path), "--format", "markdown"])
+        assert out.startswith("## pyrrho: Blocked")
+
+    def test_a_clean_plan_says_what_was_not_checked(self, tmp_path):
+        _, out, _ = run([clean_plan(tmp_path), "--format", "markdown"])
+        assert "## pyrrho: Nothing to object to" in out
+        assert "only checks what its analyzers cover" in out
+        assert "network-exposure" in out
+
+    def test_findings_are_summarised_in_a_table(self, tmp_path):
+        _, out, _ = run([open_ssh(tmp_path), "--format", "markdown"])
+        assert "| Rule | Resource | What changes |" in out
+        assert "`NE001`" in out
+
+    def test_evidence_is_behind_a_fold(self, tmp_path):
+        _, out, _ = run([open_ssh(tmp_path), "--format", "markdown"])
+        assert "<details><summary>Evidence for each finding</summary>" in out
+        assert "```json" in out
+        assert "previously_allowed" in out
+
+    def test_the_plan_digest_is_quoted_so_the_comment_is_checkable(self, tmp_path):
+        _, out, _ = run([open_ssh(tmp_path), "--format", "markdown"])
+        assert "sha256:" in out
+
+    def test_a_suppressed_finding_is_struck_through(self, tmp_path):
+        plan = open_ssh(tmp_path)
+        baseline_path = tmp_path / "baseline.json"
+        run([plan, "--init-baseline", str(baseline_path)])
+        _, out, _ = run([plan, "--baseline", str(baseline_path), "--format", "markdown"])
+        assert "~~`NE001`~~" in out
+        assert "## pyrrho: Nothing to object to" in out
+
+    def test_the_exit_code_still_holds_in_markdown_mode(self, tmp_path):
+        code, _, _ = run([open_ssh(tmp_path), "--format", "markdown"])
+        assert code == cli.EXIT_BLOCKED
+
+    def test_the_threshold_is_stated(self, tmp_path):
+        _, out, _ = run([open_ssh(tmp_path), "--format", "markdown", "--fail-on", "critical"])
+        assert "Threshold: `critical`" in out

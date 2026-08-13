@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyrrho"
-version = "0.1.0"
+version = "0.2.0"
 description = "Adversarial review of Terraform plans: what the plan really does, and what it newly exposes"
 readme = "README.md"
 requires-python = ">=3.10"

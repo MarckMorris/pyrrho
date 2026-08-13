@@ -1,0 +1,52 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.8",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_vpc_security_group_ingress_rule.dynamic",
+          "mode": "managed",
+          "type": "aws_vpc_security_group_ingress_rule",
+          "name": "dynamic",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "security_group_id": "sg-0app00000000000",
+            "cidr_ipv4": "0.0.0.0/0",
+            "ip_protocol": "tcp"
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_vpc_security_group_ingress_rule.dynamic",
+      "mode": "managed",
+      "type": "aws_vpc_security_group_ingress_rule",
+      "name": "dynamic",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "security_group_id": "sg-0app00000000000",
+          "cidr_ipv4": "0.0.0.0/0",
+          "ip_protocol": "tcp"
+        },
+        "after_unknown": {
+          "from_port": true,
+          "to_port": true,
+          "id": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": false
+      }
+    }
+  ],
+  "output_changes": {}
+}

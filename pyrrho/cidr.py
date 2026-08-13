@@ -52,8 +52,52 @@ def parse_all(values: Iterable[str] | None) -> list[IPNetwork]:
 
 
 def is_world(net: IPNetwork) -> bool:
-    """True for 0.0.0.0/0 and ::/0: the entire internet."""
+    """True for 0.0.0.0/0 and ::/0: the entire internet, in one block."""
     return net.prefixlen == 0
+
+
+def covers_internet(nets: Iterable[IPNetwork]) -> bool:
+    """True when the blocks *together* cover the whole address space.
+
+    ``0.0.0.0/1`` and ``128.0.0.0/1`` are the entire internet written as two
+    halves. So are four /2s, and so is a list of 256 /8s. Any check that tests
+    each block for ``prefixlen == 0`` sees two ordinary-looking CIDRs and lets
+    them through, which makes it the cheapest way to defeat a scanner: the rule
+    reads as scoped in review and admits everything at runtime.
+
+    Address families are counted separately, because covering all of IPv4 says
+    nothing about IPv6 and vice versa.
+    """
+    by_version: dict[int, list[IPNetwork]] = {}
+    for net in nets:
+        by_version.setdefault(net.version, []).append(net)
+
+    for version, group in by_version.items():
+        try:
+            collapsed = list(ipaddress.collapse_addresses(group))  # type: ignore[arg-type]
+        except (TypeError, ValueError):  # pragma: no cover - mixed families
+            continue
+        total = sum(n.num_addresses for n in collapsed)
+        if total >= (2 ** (32 if version == 4 else 128)):
+            return True
+    return False
+
+
+def reach(nets: Iterable[IPNetwork]) -> str:
+    """How far the blocks reach, as one of three words.
+
+    ``internet``  the whole address space, in one block or assembled from parts
+    ``broad``     public space too wide to enumerate who is inside it
+    ``narrow``    a specific public range, or private space only
+    """
+    materialised = list(nets)
+    if not materialised:
+        return "narrow"
+    if any(is_world(n) for n in materialised) or covers_internet(materialised):
+        return "internet"
+    if any(is_broad(n) for n in materialised):
+        return "broad"
+    return "narrow"
 
 
 def is_public(net: IPNetwork) -> bool:

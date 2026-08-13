@@ -3,9 +3,9 @@
   "terraform_version": "1.9.8",
   "plan_format_version": "1.2",
   "counts": {
-    "total": 27,
-    "dangerous": 23,
-    "benign_controls": 4
+    "total": 54,
+    "dangerous": 46,
+    "benign_controls": 8
   },
   "cases": [
     {
@@ -65,11 +65,11 @@
       "analyzer": "network-exposure",
       "benign": false,
       "expect": [
-        "NE004"
+        "NE001"
       ],
       "forbid": [
-        "NE001",
-        "NE002"
+        "NE002",
+        "NE004"
       ],
       "claim": [],
       "max_severity": null,
@@ -401,6 +401,381 @@
       "verified_against_terraform": false
     },
     {
+      "id": "ne014-internet-split-into-two-halves",
+      "title": "Every port opened to 0.0.0.0/1 and 128.0.0.0/1",
+      "why": "The two halves are the whole internet. Both read as ordinary scoped CIDRs in a diff, and every check that tests a block for /0 lets them through. This is the cheapest way to defeat a scanner, and it needs no privileges to write.",
+      "analyzer": "network-exposure",
+      "benign": false,
+      "expect": [
+        "NE002"
+      ],
+      "forbid": [],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/ne014-internet-split-into-two-halves/plan.json",
+      "terraform": "cases/ne014-internet-split-into-two-halves/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "ne015-default-security-group-opened",
+      "title": "The VPC default security group opened to everything",
+      "why": "aws_default_security_group applies to every network interface with no explicit group, so it has the widest reach available. It is a different resource type from aws_security_group, which is enough for a type-keyed checker to miss it.",
+      "analyzer": "network-exposure",
+      "benign": false,
+      "expect": [
+        "NE002"
+      ],
+      "forbid": [],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/ne015-default-security-group-opened/plan.json",
+      "terraform": "cases/ne015-default-security-group-opened/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "ne016-account-wide-public-access-block-removed",
+      "title": "The account-level S3 public access block deleted",
+      "why": "Same four guards as the per-bucket resource, applied to every bucket in the account at once. Removing it is strictly worse than the per-bucket case, and it is a different resource type.",
+      "analyzer": "network-exposure",
+      "benign": false,
+      "expect": [
+        "NE005"
+      ],
+      "forbid": [],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/ne016-account-wide-public-access-block-removed/plan.json",
+      "terraform": "cases/ne016-account-wide-public-access-block-removed/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "ne017-default-route-to-internet-gateway",
+      "title": "A private route table gains a default route to an internet gateway",
+      "why": "No security group changes and no public IP attribute flips. The subnets on this table simply become routable from the internet. This is the step that makes an address reachable, and reviews almost never look at route tables.",
+      "analyzer": "network-exposure",
+      "benign": false,
+      "expect": [
+        "NE013"
+      ],
+      "forbid": [],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/ne017-default-route-to-internet-gateway/plan.json",
+      "terraform": "cases/ne017-default-route-to-internet-gateway/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "ne018-subnet-moved-onto-a-public-route-table",
+      "title": "A workload subnet re-associated with a route table that reaches the internet",
+      "why": "The subnet does not change. Its security groups do not change. One association points somewhere else and every instance in it is now publicly routable.",
+      "analyzer": "network-exposure",
+      "benign": false,
+      "expect": [
+        "NE013"
+      ],
+      "forbid": [],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/ne018-subnet-moved-onto-a-public-route-table/plan.json",
+      "terraform": "cases/ne018-subnet-moved-onto-a-public-route-table/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "ne019-ingress-from-a-security-group-that-is-itself-open",
+      "title": "Database rule sourced from a security group, which is open to the world",
+      "why": "Referencing a group instead of a CIDR is the advice everyone gives, and it is only a restriction if the referenced group is one. Here the group admits the whole internet, so the database does too. Nothing in this rule says so.",
+      "analyzer": "network-exposure",
+      "benign": false,
+      "expect": [
+        "NE014"
+      ],
+      "forbid": [],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/ne019-ingress-from-a-security-group-that-is-itself-open/plan.json",
+      "terraform": "cases/ne019-ingress-from-a-security-group-that-is-itself-open/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "ne020-vpc-peering-joins-two-segments",
+      "title": "A VPC peering connection and a /16 route across it",
+      "why": "Segmentation is what limits how far an intrusion travels. A peering connection with a route wide enough to cover the peer's whole network is a flat network with extra steps, and it affects every workload on both sides.",
+      "analyzer": "network-exposure",
+      "benign": false,
+      "expect": [
+        "NE015"
+      ],
+      "forbid": [],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/ne020-vpc-peering-joins-two-segments/plan.json",
+      "terraform": "cases/ne020-vpc-peering-joins-two-segments/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "ne021-network-acl-deny-rule-removed",
+      "title": "The deny entry that was the subnet's boundary is deleted",
+      "why": "Removing a deny is the same harm as adding an allow, expressed as a deletion. After the change there is nothing in the end state to object to, so a check that reads the planned state rather than the change sees a clean result.",
+      "analyzer": "network-exposure",
+      "benign": false,
+      "expect": [
+        "NE016"
+      ],
+      "forbid": [],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/ne021-network-acl-deny-rule-removed/plan.json",
+      "terraform": "cases/ne021-network-acl-deny-rule-removed/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "ne022-bucket-policy-allows-any-principal",
+      "title": "A bucket policy statement granting Principal \"*\"",
+      "why": "The public access block is the guard; the policy is the thing the guard exists to stop. A bucket with a wildcard policy is world-readable, and the resource that says so is a JSON string inside an attribute.",
+      "analyzer": "network-exposure",
+      "benign": false,
+      "expect": [
+        "NE017"
+      ],
+      "forbid": [],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/ne022-bucket-policy-allows-any-principal/plan.json",
+      "terraform": "cases/ne022-bucket-policy-allows-any-principal/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "ne023-managed-prefix-list-widened",
+      "title": "A shared prefix list gains 0.0.0.0/0",
+      "why": "No security group appears in this plan. Every rule in the account that references the list widens at once, which is the largest change-to-blast-radius ratio available in a single line.",
+      "analyzer": "network-exposure",
+      "benign": false,
+      "expect": [
+        "NE018"
+      ],
+      "forbid": [],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/ne023-managed-prefix-list-widened/plan.json",
+      "terraform": "cases/ne023-managed-prefix-list-widened/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "ne024-public-rule-with-unresolvable-ports",
+      "title": "A world-open rule whose port range is computed at apply time",
+      "why": "The ports come from a variable Terraform cannot resolve. A checker that treats an empty port range as 'no ports' concludes there is nothing sensitive behind it and reports the most alarming case as the least.",
+      "analyzer": "network-exposure",
+      "benign": false,
+      "expect": [
+        "NE003"
+      ],
+      "forbid": [
+        "NE001"
+      ],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/ne024-public-rule-with-unresolvable-ports/plan.json",
+      "terraform": "cases/ne024-public-rule-with-unresolvable-ports/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "ne025-redshift-cluster-made-publicly-accessible",
+      "title": "A Redshift cluster given a public endpoint",
+      "why": "publicly_accessible is not an RDS-only attribute, and on Redshift it defaults to true, so a cluster created without mentioning it is public. The warehouse usually holds more than any single application database.",
+      "analyzer": "network-exposure",
+      "benign": false,
+      "expect": [
+        "NE006"
+      ],
+      "forbid": [],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/ne025-redshift-cluster-made-publicly-accessible/plan.json",
+      "terraform": "cases/ne025-redshift-cluster-made-publicly-accessible/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "ne026-launch-template-assigns-public-ips",
+      "title": "A launch template starts assigning public IP addresses",
+      "why": "The attribute is inside a nested network_interfaces block, and it applies to every instance the autoscaling group creates from now on, long after this review is forgotten.",
+      "analyzer": "network-exposure",
+      "benign": false,
+      "expect": [
+        "NE011"
+      ],
+      "forbid": [],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/ne026-launch-template-assigns-public-ips/plan.json",
+      "terraform": "cases/ne026-launch-template-assigns-public-ips/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "rd011-cloudtrail-destroyed",
+      "title": "The account's CloudTrail trail is destroyed",
+      "why": "Nothing else in the plan has to be wrong for this to matter: it removes the ability to find out later what any of the rest of it did. After the apply there is no trail resource left for an end-state check to have an opinion on.",
+      "analyzer": "real-diff",
+      "benign": false,
+      "expect": [
+        "RD009"
+      ],
+      "forbid": [],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/rd011-cloudtrail-destroyed/plan.json",
+      "terraform": "cases/rd011-cloudtrail-destroyed/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "rd012-backup-retention-set-to-zero",
+      "title": "Automated backups disabled on a production database",
+      "why": "Setting backup_retention_period to zero does not only stop future backups, it deletes the ones already taken. Applying it changes nothing you can see; it changes what is possible after the next mistake.",
+      "analyzer": "real-diff",
+      "benign": false,
+      "expect": [
+        "RD010"
+      ],
+      "forbid": [
+        "RD001",
+        "RD002"
+      ],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/rd012-backup-retention-set-to-zero/plan.json",
+      "terraform": "cases/rd012-backup-retention-set-to-zero/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "pe001-wildcard-on-everything",
+      "title": "A policy statement granting every action on every resource",
+      "why": "It arrives as one extra statement in a policy that was already there, usually while unblocking a deployment. The change is AdministratorAccess by another name, and the diff is four lines of JSON inside a string.",
+      "analyzer": "privilege-escalation",
+      "benign": false,
+      "expect": [
+        "PE001"
+      ],
+      "forbid": [],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/pe001-wildcard-on-everything/plan.json",
+      "terraform": "cases/pe001-wildcard-on-everything/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "pe002-passrole-with-a-wildcard-target",
+      "title": "iam:PassRole granted on every role, paired with ec2:RunInstances",
+      "why": "Neither permission reads as administrator access. Together they let the holder start an instance carrying any role in the account, including roles far more privileged than the one doing the passing.",
+      "analyzer": "privilege-escalation",
+      "benign": false,
+      "expect": [
+        "PE002"
+      ],
+      "forbid": [],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/pe002-passrole-with-a-wildcard-target/plan.json",
+      "terraform": "cases/pe002-passrole-with-a-wildcard-target/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "pe003-trust-policy-opened-to-anyone",
+      "title": "A role's trust policy changed to accept any principal",
+      "why": "The role's own permissions do not change at all, so a permissions review finds nothing. What changed is who is allowed to become it, which is the other half of the question and lives in a different attribute.",
+      "analyzer": "privilege-escalation",
+      "benign": false,
+      "expect": [
+        "PE003"
+      ],
+      "forbid": [],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/pe003-trust-policy-opened-to-anyone/plan.json",
+      "terraform": "cases/pe003-trust-policy-opened-to-anyone/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "pe004-escalation-primitive-granted",
+      "title": "iam:CreatePolicyVersion granted to a build role",
+      "why": "It is a single IAM action on a policy the role already manages, and it reads as housekeeping. It lets the holder write a new default version of any policy, granting itself anything.",
+      "analyzer": "privilege-escalation",
+      "benign": false,
+      "expect": [
+        "PE004"
+      ],
+      "forbid": [
+        "PE001"
+      ],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/pe004-escalation-primitive-granted/plan.json",
+      "terraform": "cases/pe004-escalation-primitive-granted/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "pe005-condition-quietly-removed",
+      "title": "The MFA condition removed from an existing Allow statement",
+      "why": "The statement grants the same actions on the same resources before and after. Only the condition is gone. Nothing about the resulting policy records that a guard rail was ever there, so a check on the end state cannot see it.",
+      "analyzer": "privilege-escalation",
+      "benign": false,
+      "expect": [
+        "PE005"
+      ],
+      "forbid": [],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/pe005-condition-quietly-removed/plan.json",
+      "terraform": "cases/pe005-condition-quietly-removed/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "pe006-allow-written-with-notaction",
+      "title": "An Allow statement using NotAction",
+      "why": "Allow with NotAction grants everything except a list, which means it grants every service AWS launches from now on, in advance. It is almost always meant to be a Deny, and it reads as a tight policy.",
+      "analyzer": "privilege-escalation",
+      "benign": false,
+      "expect": [
+        "PE006"
+      ],
+      "forbid": [],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/pe006-allow-written-with-notaction/plan.json",
+      "terraform": "cases/pe006-allow-written-with-notaction/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "pe007-administrator-access-attached",
+      "title": "AdministratorAccess attached to a service role",
+      "why": "A managed policy attachment is one line in a plan and is approved as boilerplate. This one grants the account.",
+      "analyzer": "privilege-escalation",
+      "benign": false,
+      "expect": [
+        "PE007"
+      ],
+      "forbid": [],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/pe007-administrator-access-attached/plan.json",
+      "terraform": "cases/pe007-administrator-access-attached/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "pe008-policy-unknown-until-apply",
+      "title": "An IAM policy rendered from a value Terraform cannot resolve",
+      "why": "Approving the plan approves a set of permissions nobody has read. Reporting nothing here is indistinguishable from reporting that the policy is fine.",
+      "analyzer": "privilege-escalation",
+      "benign": false,
+      "expect": [
+        "PE008"
+      ],
+      "forbid": [],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/pe008-policy-unknown-until-apply/plan.json",
+      "terraform": "cases/pe008-policy-unknown-until-apply/main.tf",
+      "verified_against_terraform": false
+    },
+    {
       "id": "nc001-https-served-to-the-public-on-purpose",
       "title": "A public web server serving 443 to the internet",
       "why": "This is what a correct public service looks like. A tool that calls this critical is a tool people turn off.",
@@ -472,6 +847,73 @@
       "max_severity": null,
       "plan": "cases/nc004-stateless-resource-replaced/plan.json",
       "terraform": "cases/nc004-stateless-resource-replaced/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "nc005-iam-policy-narrowed",
+      "title": "A policy whose wildcard is replaced with specific actions",
+      "why": "A strict improvement. A tool that reports this cannot tell the direction of a change, only that one happened, and the team learns to ignore it.",
+      "analyzer": "privilege-escalation",
+      "benign": true,
+      "expect": [],
+      "forbid": [
+        "PE001",
+        "PE004",
+        "PE006"
+      ],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/nc005-iam-policy-narrowed/plan.json",
+      "terraform": "cases/nc005-iam-policy-narrowed/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "nc006-trust-policy-scoped-to-a-named-account",
+      "title": "A cross-account trust policy naming one role, with an ExternalId",
+      "why": "This is what a correct cross-account grant looks like. Reporting it would make every legitimate integration a finding.",
+      "analyzer": "privilege-escalation",
+      "benign": true,
+      "expect": [],
+      "forbid": [
+        "PE003"
+      ],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/nc006-trust-policy-scoped-to-a-named-account/plan.json",
+      "terraform": "cases/nc006-trust-policy-scoped-to-a-named-account/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "nc007-route-to-a-nat-gateway",
+      "title": "A private subnet's default route pointing at a NAT gateway",
+      "why": "This is how a private subnet is supposed to reach out. It is a default route, so a rule keyed on 0.0.0.0/0 alone would report it; the target is what matters.",
+      "analyzer": "network-exposure",
+      "benign": true,
+      "expect": [],
+      "forbid": [
+        "NE013"
+      ],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/nc007-route-to-a-nat-gateway/plan.json",
+      "terraform": "cases/nc007-route-to-a-nat-gateway/main.tf",
+      "verified_against_terraform": false
+    },
+    {
+      "id": "nc008-network-acl-allow-for-an-internal-range",
+      "title": "A network ACL allow entry scoped to the VPC range",
+      "why": "Allow entries are normal; the question is what they admit. Reporting every allow would make the rule useless on any real network ACL.",
+      "analyzer": "network-exposure",
+      "benign": true,
+      "expect": [],
+      "forbid": [
+        "NE008",
+        "NE016"
+      ],
+      "claim": [],
+      "max_severity": null,
+      "plan": "cases/nc008-network-acl-allow-for-an-internal-range/plan.json",
+      "terraform": "cases/nc008-network-acl-allow-for-an-internal-range/main.tf",
       "verified_against_terraform": false
     }
   ]

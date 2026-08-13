@@ -9,6 +9,7 @@ from __future__ import annotations
 import pytest
 
 from pyrrho.analyzers.network_exposure import NetworkExposure
+from pyrrho import cidr
 from pyrrho.core import Severity
 
 from .conftest import change, group, make_plan, rule, rule_ids
@@ -88,21 +89,98 @@ class TestDeltaDiscipline:
         assert rule_ids(findings) == {"NE001"}
 
 
+def widened_db_rule(before_cidrs, after_cidrs, port=3306):
+    return change(
+        "aws_security_group_rule.db",
+        "aws_security_group_rule",
+        ["update"],
+        before={"type": "ingress", "from_port": port, "to_port": port, "protocol": "tcp", "cidr_blocks": before_cidrs},
+        after={"type": "ingress", "from_port": port, "to_port": port, "protocol": "tcp", "cidr_blocks": after_cidrs},
+    )
+
+
 class TestWidening:
     def test_widening_to_a_public_slash_8_on_a_database_port(self):
-        findings = run(
-            [
-                change(
-                    "aws_security_group_rule.db",
-                    "aws_security_group_rule",
-                    ["update"],
-                    before={"type": "ingress", "from_port": 3306, "to_port": 3306, "protocol": "tcp", "cidr_blocks": ["198.51.100.0/24"]},
-                    after={"type": "ingress", "from_port": 3306, "to_port": 3306, "protocol": "tcp", "cidr_blocks": ["198.0.0.0/8"]},
-                )
-            ]
-        )
-        assert rule_ids(findings) == {"NE004"}
+        """The exposure is the finding; the widening is evidence for it.
+
+        Reporting NE001 *and* NE004 here would be two alerts for one problem,
+        and the second always reads as the first restated.
+        """
+        findings = run([widened_db_rule(["198.51.100.0/24"], ["198.0.0.0/8"])])
+        assert rule_ids(findings) == {"NE001"}
+        assert findings[0].severity is Severity.HIGH
+        assert findings[0].evidence["reach"] == "broad"
         assert findings[0].evidence["widening_factor"] == 65536.0
+
+    def test_a_widening_with_nothing_else_to_say_is_its_own_finding(self):
+        # A public range that grew, on a port nothing well known listens on.
+        findings = run([widened_db_rule(["45.33.32.0/24"], ["45.33.32.0/20"], port=8443)])
+        assert rule_ids(findings) == {"NE004"}
+        assert findings[0].severity is Severity.MEDIUM
+        assert findings[0].evidence["widening_factor"] == 16.0
+
+    def test_a_new_public_source_with_no_prior_cidr_is_not_dropped(self):
+        """Regression: the widening branch required a prior CIDR to exist.
+
+        A rule whose sources were security-group references only, gaining a
+        hardcoded public /24 on MySQL, reported nothing at all. That is how a
+        contractor gets database access.
+        """
+        findings = run([widened_db_rule([], ["45.33.32.0/24"])])
+        assert rule_ids(findings) == {"NE001"}
+        assert findings[0].severity is Severity.MEDIUM
+
+    def test_a_brand_new_group_exposing_ssh_to_a_public_range_is_reported(self):
+        findings = run([sg_change(None, [rule(22, 22, "tcp", ["45.33.32.0/24"])], actions=["create"])])
+        assert rule_ids(findings) == {"NE001"}
+
+
+class TestSplitInternet:
+    """0.0.0.0/1 plus 128.0.0.0/1 is the whole internet, written as two CIDRs.
+
+    Every `prefixlen == 0` check in the analyzer used to let this through. It is
+    the cheapest evasion there is, because the rule reads as scoped in review.
+    """
+
+    HALVES = ["0.0.0.0/1", "128.0.0.0/1"]
+
+    def test_all_ports_from_both_halves_is_still_critical(self):
+        findings = run([sg_change(None, [rule(0, 0, "-1", self.HALVES)], actions=["create"])])
+        assert rule_ids(findings) == {"NE002"}
+        assert findings[0].severity is Severity.CRITICAL
+        assert findings[0].evidence["reach"] == "internet"
+
+    def test_ssh_from_both_halves_is_still_critical(self):
+        findings = run([sg_change(None, [rule(22, 22, "tcp", self.HALVES)], actions=["create"])])
+        assert rule_ids(findings) == {"NE001"}
+        assert findings[0].severity is Severity.CRITICAL
+
+    def test_an_unremarkable_port_from_both_halves_is_reported(self):
+        findings = run([sg_change(None, [rule(8080, 8080, "tcp", self.HALVES)], actions=["create"])])
+        assert rule_ids(findings) == {"NE003"}
+        assert findings[0].severity is Severity.HIGH
+
+    def test_egress_to_both_halves_is_reported(self):
+        changed = change(
+            "aws_security_group.worker",
+            "aws_security_group",
+            ["update"],
+            before=group("worker", [], egress=[]),
+            after=group("worker", [], egress=[rule(0, 0, "-1", self.HALVES)]),
+        )
+        assert rule_ids(run([changed])) == {"NE009"}
+
+    def test_four_quarters_also_count(self):
+        quarters = ["0.0.0.0/2", "64.0.0.0/2", "128.0.0.0/2", "192.0.0.0/2"]
+        findings = run([sg_change(None, [rule(22, 22, "tcp", quarters)], actions=["create"])])
+        assert findings[0].severity is Severity.CRITICAL
+
+    def test_one_half_alone_is_not_the_whole_internet(self):
+        findings = run([sg_change(None, [rule(22, 22, "tcp", ["0.0.0.0/1"])], actions=["create"])])
+        assert findings[0].severity is Severity.HIGH  # broad, not internet-wide
+
+    def test_ipv4_halves_do_not_imply_ipv6_coverage(self):
+        assert cidr.reach(cidr.parse_all(["::/1"])) != "internet"
 
 
 class TestRuleResourceShapes:

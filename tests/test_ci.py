@@ -82,14 +82,28 @@ class TestTheJobsAreHonest:
         A pipeline that stays green while its steps fail turns a real signal
         into decoration.
         """
+        # One deliberate exception, asserted by name so it cannot spread: the
+        # dogfood step runs the Action against a plan that is *meant* to block,
+        # and the steps after it check that it blocked for the right reason. The
+        # job still fails if those checks fail.
+        allowed = {"action/Review a deliberately dangerous plan"}
+
         offenders: list[str] = []
         for job_name, job in workflow["jobs"].items():
             if job.get("continue-on-error"):
                 offenders.append(job_name)
             for step in job.get("steps", []) or []:
-                if step.get("continue-on-error"):
-                    offenders.append(f"{job_name}/{step.get('name', 'unnamed step')}")
+                label = f"{job_name}/{step.get('name', 'unnamed step')}"
+                if step.get("continue-on-error") and label not in allowed:
+                    offenders.append(label)
         assert not offenders, f"continue-on-error found in: {offenders}"
+
+    def test_the_dogfood_exception_still_asserts_the_outcome(self, workflow):
+        steps = workflow["jobs"]["action"]["steps"]
+        names = [s.get("name") for s in steps]
+        assert "The Action must have blocked, and said why" in names
+        check = next(s for s in steps if s.get("name") == "The Action must have blocked, and said why")
+        assert "exit 1" in check["run"]
 
     def test_the_expected_jobs_are_present(self, workflow):
         expected = {
@@ -99,6 +113,7 @@ class TestTheJobsAreHonest:
             "compare",
             "self-review",
             "cli-contract",
+            "action",
             "plugin",
         }
         assert expected <= set(workflow["jobs"]), (

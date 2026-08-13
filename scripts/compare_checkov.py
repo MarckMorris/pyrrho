@@ -194,13 +194,21 @@ def main(argv: list[str] | None = None) -> int:
 
     print()
     print("  Read this fairly:")
-    print("   * Checkov is not trying to do delta analysis. Its three false alarms are")
-    print("     failures against pyrrho's definition of the job, not against its own.")
-    print("   * pyrrho's own false alarm is nc001, where it reports a LOW note on a")
-    print("     deliberately public HTTPS rule. Scored strictly here, with no exemption")
-    print("     that Checkov does not also get.")
-    print("   * pyrrho misses rd007 because --claim is withheld: there is no Checkov")
-    print("     equivalent, so passing it would not be like for like.")
+    print(
+        f"   * Checkov is not trying to do delta analysis. Its "
+        f"{summary['checkov']['false_alarms']} false alarm(s) are failures against pyrrho's"
+    )
+    print("     definition of the job, not against its own. On its own terms it is right.")
+    noisy_pyrrho = [r["id"] for r in controls if not r["pyrrho_score"]["quiet"]]
+    if noisy_pyrrho:
+        print(
+            f"   * pyrrho's own false alarm(s): {', '.join(noisy_pyrrho)}. Scored strictly,"
+        )
+        print("     with no exemption that Checkov does not also get.")
+    missed_pyrrho = [r["id"] for r in dangerous if not r["pyrrho_score"]["detected"]]
+    if missed_pyrrho:
+        print(f"   * pyrrho misses: {', '.join(missed_pyrrho)}.")
+        print("     rd007 needs --claim, which has no Checkov equivalent, so it is withheld.")
     print()
     print("  Reproduce: pip install checkov && python scripts/compare_checkov.py")
     return 0

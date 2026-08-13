@@ -270,8 +270,8 @@ resource "aws_vpc_security_group_ingress_rule" "db_from_anywhere" {
             "scoped. It admits sixteen million more addresses than it did."
         ),
         "analyzer": "network-exposure",
-        "expect": ["NE004"],
-        "forbid": ["NE001", "NE002"],
+        "expect": ["NE001"],
+        "forbid": ["NE002", "NE004"],
         "tf": """
 resource "aws_security_group_rule" "mysql_from_partner" {
   type              = "ingress"
@@ -982,6 +982,946 @@ resource "aws_cloudwatch_log_group" "audit" {
             )
         ],
     },
+
+    {
+        "id": "ne014-internet-split-into-two-halves",
+        "title": "Every port opened to 0.0.0.0/1 and 128.0.0.0/1",
+        "why": (
+            "The two halves are the whole internet. Both read as ordinary scoped CIDRs in "
+            "a diff, and every check that tests a block for /0 lets them through. This is "
+            "the cheapest way to defeat a scanner, and it needs no privileges to write."
+        ),
+        "analyzer": "network-exposure",
+        "expect": ["NE002"],
+        "forbid": [],
+        "tf": """
+resource "aws_security_group" "split" {
+  name   = "partner-access"
+  vpc_id = var.vpc_id
+
+  ingress {
+    description = "partner ranges"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/1", "128.0.0.0/1"]
+  }
+}
+""",
+        "changes": [
+            rc(
+                "aws_security_group.split",
+                "aws_security_group",
+                ["create"],
+                before=None,
+                after=sg("partner-access", [sg_rule(0, 0, "-1", ["0.0.0.0/1", "128.0.0.0/1"], "partner ranges")]),
+            )
+        ],
+    },
+    {
+        "id": "ne015-default-security-group-opened",
+        "title": "The VPC default security group opened to everything",
+        "why": (
+            "aws_default_security_group applies to every network interface with no explicit "
+            "group, so it has the widest reach available. It is a different resource type "
+            "from aws_security_group, which is enough for a type-keyed checker to miss it."
+        ),
+        "analyzer": "network-exposure",
+        "expect": ["NE002"],
+        "forbid": [],
+        "tf": """
+resource "aws_default_security_group" "default" {
+  vpc_id = var.vpc_id
+
+  ingress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+""",
+        "changes": [
+            rc(
+                "aws_default_security_group.default",
+                "aws_default_security_group",
+                ["update"],
+                before=sg("default", []),
+                after=sg("default", [sg_rule(0, 0, "-1", ["0.0.0.0/0"], "")]),
+            )
+        ],
+    },
+    {
+        "id": "ne016-account-wide-public-access-block-removed",
+        "title": "The account-level S3 public access block deleted",
+        "why": (
+            "Same four guards as the per-bucket resource, applied to every bucket in the "
+            "account at once. Removing it is strictly worse than the per-bucket case, and "
+            "it is a different resource type."
+        ),
+        "analyzer": "network-exposure",
+        "expect": ["NE005"],
+        "forbid": [],
+        "tf": """
+# The aws_s3_account_public_access_block block was removed in this change.
+""",
+        "changes": [
+            rc(
+                "aws_s3_account_public_access_block.this",
+                "aws_s3_account_public_access_block",
+                ["delete"],
+                before={
+                    "account_id": "111122223333",
+                    "block_public_acls": True,
+                    "block_public_policy": True,
+                    "ignore_public_acls": True,
+                    "restrict_public_buckets": True,
+                },
+                after=None,
+                action_reason="delete_because_no_resource_config",
+            )
+        ],
+    },
+    {
+        "id": "ne017-default-route-to-internet-gateway",
+        "title": "A private route table gains a default route to an internet gateway",
+        "why": (
+            "No security group changes and no public IP attribute flips. The subnets on "
+            "this table simply become routable from the internet. This is the step that "
+            "makes an address reachable, and reviews almost never look at route tables."
+        ),
+        "analyzer": "network-exposure",
+        "expect": ["NE013"],
+        "forbid": [],
+        "tf": """
+resource "aws_route" "egress" {
+  route_table_id         = aws_route_table.private.id
+  destination_cidr_block = "0.0.0.0/0"
+  gateway_id             = aws_internet_gateway.main.id # was the NAT gateway
+}
+""",
+        "changes": [
+            rc(
+                "aws_route.egress",
+                "aws_route",
+                ["create"],
+                before=None,
+                after={
+                    "route_table_id": "rtb-0private00000000",
+                    "destination_cidr_block": "0.0.0.0/0",
+                    "gateway_id": "igw-0abc123456789def0",
+                },
+            )
+        ],
+    },
+    {
+        "id": "ne018-subnet-moved-onto-a-public-route-table",
+        "title": "A workload subnet re-associated with a route table that reaches the internet",
+        "why": (
+            "The subnet does not change. Its security groups do not change. One association "
+            "points somewhere else and every instance in it is now publicly routable."
+        ),
+        "analyzer": "network-exposure",
+        "expect": ["NE013"],
+        "forbid": [],
+        "tf": """
+resource "aws_route_table_association" "app" {
+  subnet_id      = aws_subnet.app.id
+  route_table_id = aws_route_table.public.id # was aws_route_table.private.id
+}
+""",
+        "changes": [
+            rc(
+                "aws_route_table.public",
+                "aws_route_table",
+                ["no-op"],
+                before={
+                    "id": "rtb-0public000000000",
+                    "route": [
+                        {"cidr_block": "0.0.0.0/0", "destination_cidr_block": "0.0.0.0/0", "gateway_id": "igw-0abc123456789def0"}
+                    ],
+                },
+                after={
+                    "id": "rtb-0public000000000",
+                    "route": [
+                        {"cidr_block": "0.0.0.0/0", "destination_cidr_block": "0.0.0.0/0", "gateway_id": "igw-0abc123456789def0"}
+                    ],
+                },
+            ),
+            rc(
+                "aws_route_table_association.app",
+                "aws_route_table_association",
+                ["update"],
+                before={"subnet_id": "subnet-0app0000000000", "route_table_id": "rtb-0private00000000"},
+                after={"subnet_id": "subnet-0app0000000000", "route_table_id": "rtb-0public000000000"},
+            ),
+        ],
+    },
+    {
+        "id": "ne019-ingress-from-a-security-group-that-is-itself-open",
+        "title": "Database rule sourced from a security group, which is open to the world",
+        "why": (
+            "Referencing a group instead of a CIDR is the advice everyone gives, and it is "
+            "only a restriction if the referenced group is one. Here the group admits the "
+            "whole internet, so the database does too. Nothing in this rule says so."
+        ),
+        "analyzer": "network-exposure",
+        "expect": ["NE014"],
+        "forbid": [],
+        "tf": """
+resource "aws_security_group_rule" "db_from_web" {
+  type                     = "ingress"
+  security_group_id        = aws_security_group.db.id
+  source_security_group_id = aws_security_group.web.id
+  from_port                = 5432
+  to_port                  = 5432
+  protocol                 = "tcp"
+}
+""",
+        "changes": [
+            rc(
+                "aws_security_group.web",
+                "aws_security_group",
+                ["no-op"],
+                before={**sg("web", [sg_rule(0, 65535, "tcp", ["0.0.0.0/0"], "public tier")]), "id": "sg-0web00000000000"},
+                after={**sg("web", [sg_rule(0, 65535, "tcp", ["0.0.0.0/0"], "public tier")]), "id": "sg-0web00000000000"},
+            ),
+            rc(
+                "aws_security_group_rule.db_from_web",
+                "aws_security_group_rule",
+                ["create"],
+                before=None,
+                after={
+                    "type": "ingress",
+                    "security_group_id": "sg-0db000000000000",
+                    "source_security_group_id": "sg-0web00000000000",
+                    "from_port": 5432,
+                    "to_port": 5432,
+                    "protocol": "tcp",
+                    "cidr_blocks": [],
+                    "ipv6_cidr_blocks": [],
+                },
+            ),
+        ],
+    },
+    {
+        "id": "ne020-vpc-peering-joins-two-segments",
+        "title": "A VPC peering connection and a /16 route across it",
+        "why": (
+            "Segmentation is what limits how far an intrusion travels. A peering connection "
+            "with a route wide enough to cover the peer's whole network is a flat network "
+            "with extra steps, and it affects every workload on both sides."
+        ),
+        "analyzer": "network-exposure",
+        "expect": ["NE015"],
+        "forbid": [],
+        "tf": """
+resource "aws_vpc_peering_connection" "to_analytics" {
+  vpc_id      = var.vpc_id
+  peer_vpc_id = var.analytics_vpc_id
+  auto_accept = true
+}
+
+resource "aws_route" "to_analytics" {
+  route_table_id            = aws_route_table.private.id
+  destination_cidr_block    = "10.50.0.0/16"
+  vpc_peering_connection_id = aws_vpc_peering_connection.to_analytics.id
+}
+""",
+        "changes": [
+            rc(
+                "aws_vpc_peering_connection.to_analytics",
+                "aws_vpc_peering_connection",
+                ["create"],
+                before=None,
+                after={
+                    "vpc_id": "vpc-0a1b2c3d4e5f60718",
+                    "peer_vpc_id": "vpc-0analytics000000",
+                    "peer_owner_id": "444455556666",
+                    "auto_accept": True,
+                },
+            ),
+            rc(
+                "aws_route.to_analytics",
+                "aws_route",
+                ["create"],
+                before=None,
+                after={
+                    "route_table_id": "rtb-0private00000000",
+                    "destination_cidr_block": "10.50.0.0/16",
+                    "vpc_peering_connection_id": "pcx-0abc123456789def0",
+                },
+            ),
+        ],
+    },
+    {
+        "id": "ne021-network-acl-deny-rule-removed",
+        "title": "The deny entry that was the subnet's boundary is deleted",
+        "why": (
+            "Removing a deny is the same harm as adding an allow, expressed as a deletion. "
+            "After the change there is nothing in the end state to object to, so a check "
+            "that reads the planned state rather than the change sees a clean result."
+        ),
+        "analyzer": "network-exposure",
+        "expect": ["NE016"],
+        "forbid": [],
+        "tf": """
+# The aws_network_acl_rule.deny_from_dmz block was removed in this change.
+""",
+        "changes": [
+            rc(
+                "aws_network_acl_rule.deny_from_dmz",
+                "aws_network_acl_rule",
+                ["delete"],
+                before={
+                    "network_acl_id": "acl-0private000000000",
+                    "rule_number": 90,
+                    "egress": False,
+                    "protocol": "-1",
+                    "rule_action": "deny",
+                    "cidr_block": "10.90.0.0/16",
+                },
+                after=None,
+                action_reason="delete_because_no_resource_config",
+            )
+        ],
+    },
+    {
+        "id": "ne022-bucket-policy-allows-any-principal",
+        "title": "A bucket policy statement granting Principal \"*\"",
+        "why": (
+            "The public access block is the guard; the policy is the thing the guard exists "
+            "to stop. A bucket with a wildcard policy is world-readable, and the resource "
+            "that says so is a JSON string inside an attribute."
+        ),
+        "analyzer": "network-exposure",
+        "expect": ["NE017"],
+        "forbid": [],
+        "tf": """
+resource "aws_s3_bucket_policy" "assets" {
+  bucket = aws_s3_bucket.assets.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "PublicRead"
+      Effect    = "Allow"
+      Principal = "*"
+      Action    = ["s3:GetObject", "s3:ListBucket"]
+      Resource  = ["arn:aws:s3:::acme-prod-assets/*"]
+    }]
+  })
+}
+""",
+        "changes": [
+            rc(
+                "aws_s3_bucket_policy.assets",
+                "aws_s3_bucket_policy",
+                ["create"],
+                before=None,
+                after={
+                    "bucket": "acme-prod-assets",
+                    "policy": json.dumps(
+                        {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Sid": "PublicRead",
+                                    "Effect": "Allow",
+                                    "Principal": "*",
+                                    "Action": ["s3:GetObject", "s3:ListBucket"],
+                                    "Resource": ["arn:aws:s3:::acme-prod-assets/*"],
+                                }
+                            ],
+                        }
+                    ),
+                },
+            )
+        ],
+    },
+    {
+        "id": "ne023-managed-prefix-list-widened",
+        "title": "A shared prefix list gains 0.0.0.0/0",
+        "why": (
+            "No security group appears in this plan. Every rule in the account that "
+            "references the list widens at once, which is the largest change-to-blast-radius "
+            "ratio available in a single line."
+        ),
+        "analyzer": "network-exposure",
+        "expect": ["NE018"],
+        "forbid": [],
+        "tf": """
+resource "aws_ec2_managed_prefix_list" "corporate" {
+  name           = "corporate-egress"
+  address_family = "IPv4"
+  max_entries    = 20
+
+  entry {
+    cidr        = "0.0.0.0/0"
+    description = "temporary while the VPN is down"
+  }
+}
+""",
+        "changes": [
+            rc(
+                "aws_ec2_managed_prefix_list.corporate",
+                "aws_ec2_managed_prefix_list",
+                ["update"],
+                before={
+                    "name": "corporate-egress",
+                    "max_entries": 20,
+                    "entry": [{"cidr": "203.0.113.0/24", "description": "head office"}],
+                },
+                after={
+                    "name": "corporate-egress",
+                    "max_entries": 20,
+                    "entry": [
+                        {"cidr": "203.0.113.0/24", "description": "head office"},
+                        {"cidr": "0.0.0.0/0", "description": "temporary while the VPN is down"},
+                    ],
+                },
+            )
+        ],
+    },
+    {
+        "id": "ne024-public-rule-with-unresolvable-ports",
+        "title": "A world-open rule whose port range is computed at apply time",
+        "why": (
+            "The ports come from a variable Terraform cannot resolve. A checker that treats "
+            "an empty port range as 'no ports' concludes there is nothing sensitive behind "
+            "it and reports the most alarming case as the least."
+        ),
+        "analyzer": "network-exposure",
+        "expect": ["NE003"],
+        "forbid": ["NE001"],
+        "tf": """
+resource "aws_vpc_security_group_ingress_rule" "dynamic" {
+  security_group_id = aws_security_group.app.id
+  cidr_ipv4         = "0.0.0.0/0"
+  ip_protocol       = "tcp"
+  from_port         = var.service_port # known after apply
+  to_port           = var.service_port
+}
+""",
+        "changes": [
+            rc(
+                "aws_vpc_security_group_ingress_rule.dynamic",
+                "aws_vpc_security_group_ingress_rule",
+                ["create"],
+                before=None,
+                after={
+                    "security_group_id": "sg-0app00000000000",
+                    "cidr_ipv4": "0.0.0.0/0",
+                    "ip_protocol": "tcp",
+                },
+                after_unknown={"from_port": True, "to_port": True, "id": True},
+            )
+        ],
+    },
+    {
+        "id": "ne025-redshift-cluster-made-publicly-accessible",
+        "title": "A Redshift cluster given a public endpoint",
+        "why": (
+            "publicly_accessible is not an RDS-only attribute, and on Redshift it defaults "
+            "to true, so a cluster created without mentioning it is public. The warehouse "
+            "usually holds more than any single application database."
+        ),
+        "analyzer": "network-exposure",
+        "expect": ["NE006"],
+        "forbid": [],
+        "tf": """
+resource "aws_redshift_cluster" "warehouse" {
+  cluster_identifier  = "warehouse-prod"
+  publicly_accessible = true # was false
+}
+""",
+        "changes": [
+            rc(
+                "aws_redshift_cluster.warehouse",
+                "aws_redshift_cluster",
+                ["update"],
+                before={"cluster_identifier": "warehouse-prod", "publicly_accessible": False},
+                after={"cluster_identifier": "warehouse-prod", "publicly_accessible": True},
+            )
+        ],
+    },
+    {
+        "id": "ne026-launch-template-assigns-public-ips",
+        "title": "A launch template starts assigning public IP addresses",
+        "why": (
+            "The attribute is inside a nested network_interfaces block, and it applies to "
+            "every instance the autoscaling group creates from now on, long after this "
+            "review is forgotten."
+        ),
+        "analyzer": "network-exposure",
+        "expect": ["NE011"],
+        "forbid": [],
+        "tf": """
+resource "aws_launch_template" "workers" {
+  name_prefix   = "workers-"
+  instance_type = "m6i.large"
+
+  network_interfaces {
+    associate_public_ip_address = true # was false
+    security_groups             = [aws_security_group.worker.id]
+  }
+}
+""",
+        "changes": [
+            rc(
+                "aws_launch_template.workers",
+                "aws_launch_template",
+                ["update"],
+                before={
+                    "name_prefix": "workers-",
+                    "network_interfaces": [{"associate_public_ip_address": "false"}],
+                },
+                after={
+                    "name_prefix": "workers-",
+                    "network_interfaces": [{"associate_public_ip_address": "true"}],
+                },
+            )
+        ],
+    },
+    {
+        "id": "rd011-cloudtrail-destroyed",
+        "title": "The account's CloudTrail trail is destroyed",
+        "why": (
+            "Nothing else in the plan has to be wrong for this to matter: it removes the "
+            "ability to find out later what any of the rest of it did. After the apply "
+            "there is no trail resource left for an end-state check to have an opinion on."
+        ),
+        "analyzer": "real-diff",
+        "expect": ["RD009"],
+        "forbid": [],
+        "tf": """
+# The aws_cloudtrail.audit block was removed during a cost-reduction change.
+""",
+        "changes": [
+            rc(
+                "aws_cloudtrail.audit",
+                "aws_cloudtrail",
+                ["delete"],
+                before={
+                    "name": "account-audit",
+                    "s3_bucket_name": "acme-cloudtrail",
+                    "enable_logging": True,
+                    "is_multi_region_trail": True,
+                },
+                after=None,
+                action_reason="delete_because_no_resource_config",
+            )
+        ],
+    },
+    {
+        "id": "rd012-backup-retention-set-to-zero",
+        "title": "Automated backups disabled on a production database",
+        "why": (
+            "Setting backup_retention_period to zero does not only stop future backups, it "
+            "deletes the ones already taken. Applying it changes nothing you can see; it "
+            "changes what is possible after the next mistake."
+        ),
+        "analyzer": "real-diff",
+        "expect": ["RD010"],
+        "forbid": ["RD001", "RD002"],
+        "tf": """
+resource "aws_db_instance" "orders" {
+  identifier               = "orders-prod"
+  backup_retention_period  = 0     # was 35
+  delete_automated_backups = true  # was false
+}
+""",
+        "changes": [
+            rc(
+                "aws_db_instance.orders",
+                "aws_db_instance",
+                ["update"],
+                before={
+                    "identifier": "orders-prod",
+                    "backup_retention_period": 35,
+                    "delete_automated_backups": False,
+                },
+                after={
+                    "identifier": "orders-prod",
+                    "backup_retention_period": 0,
+                    "delete_automated_backups": True,
+                },
+            )
+        ],
+    },
+    # ---------------- privilege escalation ----------------
+    {
+        "id": "pe001-wildcard-on-everything",
+        "title": "A policy statement granting every action on every resource",
+        "why": (
+            "It arrives as one extra statement in a policy that was already there, usually "
+            "while unblocking a deployment. The change is AdministratorAccess by another "
+            "name, and the diff is four lines of JSON inside a string."
+        ),
+        "analyzer": "privilege-escalation",
+        "expect": ["PE001"],
+        "forbid": [],
+        "tf": """
+resource "aws_iam_policy" "ci_deploy" {
+  name   = "ci-deploy"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      { Sid = "Existing", Effect = "Allow", Action = ["s3:GetObject"], Resource = ["arn:aws:s3:::artifacts/*"] },
+      { Sid = "Unblock",  Effect = "Allow", Action = "*", Resource = "*" },
+    ]
+  })
+}
+""",
+        "changes": [
+            rc(
+                "aws_iam_policy.ci_deploy",
+                "aws_iam_policy",
+                ["update"],
+                before={
+                    "name": "ci-deploy",
+                    "policy": json.dumps(
+                        {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {"Sid": "Existing", "Effect": "Allow", "Action": ["s3:GetObject"], "Resource": ["arn:aws:s3:::artifacts/*"]}
+                            ],
+                        }
+                    ),
+                },
+                after={
+                    "name": "ci-deploy",
+                    "policy": json.dumps(
+                        {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {"Sid": "Existing", "Effect": "Allow", "Action": ["s3:GetObject"], "Resource": ["arn:aws:s3:::artifacts/*"]},
+                                {"Sid": "Unblock", "Effect": "Allow", "Action": "*", "Resource": "*"},
+                            ],
+                        }
+                    ),
+                },
+            )
+        ],
+    },
+    {
+        "id": "pe002-passrole-with-a-wildcard-target",
+        "title": "iam:PassRole granted on every role, paired with ec2:RunInstances",
+        "why": (
+            "Neither permission reads as administrator access. Together they let the holder "
+            "start an instance carrying any role in the account, including roles far more "
+            "privileged than the one doing the passing."
+        ),
+        "analyzer": "privilege-escalation",
+        "expect": ["PE002"],
+        "forbid": [],
+        "tf": """
+resource "aws_iam_role_policy" "runner" {
+  name   = "runner"
+  role   = aws_iam_role.runner.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["ec2:RunInstances", "iam:PassRole"]
+      Resource = "*"
+    }]
+  })
+}
+""",
+        "changes": [
+            rc(
+                "aws_iam_role_policy.runner",
+                "aws_iam_role_policy",
+                ["create"],
+                before=None,
+                after={
+                    "name": "runner",
+                    "role": "runner",
+                    "policy": json.dumps(
+                        {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {"Effect": "Allow", "Action": ["ec2:RunInstances", "iam:PassRole"], "Resource": "*"}
+                            ],
+                        }
+                    ),
+                },
+            )
+        ],
+    },
+    {
+        "id": "pe003-trust-policy-opened-to-anyone",
+        "title": "A role's trust policy changed to accept any principal",
+        "why": (
+            "The role's own permissions do not change at all, so a permissions review finds "
+            "nothing. What changed is who is allowed to become it, which is the other half "
+            "of the question and lives in a different attribute."
+        ),
+        "analyzer": "privilege-escalation",
+        "expect": ["PE003"],
+        "forbid": [],
+        "tf": """
+resource "aws_iam_role" "deploy" {
+  name = "deploy"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { AWS = "*" } # was { AWS = "arn:aws:iam::111122223333:root" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+}
+""",
+        "changes": [
+            rc(
+                "aws_iam_role.deploy",
+                "aws_iam_role",
+                ["update"],
+                before={
+                    "name": "deploy",
+                    "assume_role_policy": json.dumps(
+                        {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {"Effect": "Allow", "Principal": {"AWS": "arn:aws:iam::111122223333:root"}, "Action": "sts:AssumeRole"}
+                            ],
+                        }
+                    ),
+                },
+                after={
+                    "name": "deploy",
+                    "assume_role_policy": json.dumps(
+                        {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {"Effect": "Allow", "Principal": {"AWS": "*"}, "Action": "sts:AssumeRole"}
+                            ],
+                        }
+                    ),
+                },
+            )
+        ],
+    },
+    {
+        "id": "pe004-escalation-primitive-granted",
+        "title": "iam:CreatePolicyVersion granted to a build role",
+        "why": (
+            "It is a single IAM action on a policy the role already manages, and it reads "
+            "as housekeeping. It lets the holder write a new default version of any policy, "
+            "granting itself anything."
+        ),
+        "analyzer": "privilege-escalation",
+        "expect": ["PE004"],
+        "forbid": ["PE001"],
+        "tf": """
+resource "aws_iam_role_policy" "build" {
+  name   = "build"
+  role   = aws_iam_role.build.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["iam:CreatePolicyVersion", "iam:SetDefaultPolicyVersion"]
+      Resource = ["arn:aws:iam::111122223333:policy/*"]
+    }]
+  })
+}
+""",
+        "changes": [
+            rc(
+                "aws_iam_role_policy.build",
+                "aws_iam_role_policy",
+                ["update"],
+                before={
+                    "name": "build",
+                    "policy": json.dumps(
+                        {"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Action": ["s3:GetObject"], "Resource": "*"}]}
+                    ),
+                },
+                after={
+                    "name": "build",
+                    "policy": json.dumps(
+                        {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {"Effect": "Allow", "Action": ["s3:GetObject"], "Resource": "*"},
+                                {
+                                    "Effect": "Allow",
+                                    "Action": ["iam:CreatePolicyVersion", "iam:SetDefaultPolicyVersion"],
+                                    "Resource": ["arn:aws:iam::111122223333:policy/*"],
+                                },
+                            ],
+                        }
+                    ),
+                },
+            )
+        ],
+    },
+    {
+        "id": "pe005-condition-quietly-removed",
+        "title": "The MFA condition removed from an existing Allow statement",
+        "why": (
+            "The statement grants the same actions on the same resources before and after. "
+            "Only the condition is gone. Nothing about the resulting policy records that a "
+            "guard rail was ever there, so a check on the end state cannot see it."
+        ),
+        "analyzer": "privilege-escalation",
+        "expect": ["PE005"],
+        "forbid": [],
+        "tf": """
+resource "aws_iam_policy" "operators" {
+  name   = "operators"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "Operate"
+      Effect   = "Allow"
+      Action   = ["ec2:TerminateInstances", "rds:DeleteDBInstance"]
+      Resource = "*"
+      # Condition = { Bool = { "aws:MultiFactorAuthPresent" = "true" } }
+    }]
+  })
+}
+""",
+        "changes": [
+            rc(
+                "aws_iam_policy.operators",
+                "aws_iam_policy",
+                ["update"],
+                before={
+                    "name": "operators",
+                    "policy": json.dumps(
+                        {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Sid": "Operate",
+                                    "Effect": "Allow",
+                                    "Action": ["ec2:TerminateInstances", "rds:DeleteDBInstance"],
+                                    "Resource": "*",
+                                    "Condition": {"Bool": {"aws:MultiFactorAuthPresent": "true"}},
+                                }
+                            ],
+                        }
+                    ),
+                },
+                after={
+                    "name": "operators",
+                    "policy": json.dumps(
+                        {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Sid": "Operate",
+                                    "Effect": "Allow",
+                                    "Action": ["ec2:TerminateInstances", "rds:DeleteDBInstance"],
+                                    "Resource": "*",
+                                }
+                            ],
+                        }
+                    ),
+                },
+            )
+        ],
+    },
+    {
+        "id": "pe006-allow-written-with-notaction",
+        "title": "An Allow statement using NotAction",
+        "why": (
+            "Allow with NotAction grants everything except a list, which means it grants "
+            "every service AWS launches from now on, in advance. It is almost always meant "
+            "to be a Deny, and it reads as a tight policy."
+        ),
+        "analyzer": "privilege-escalation",
+        "expect": ["PE006"],
+        "forbid": [],
+        "tf": """
+resource "aws_iam_policy" "everything_but_iam" {
+  name   = "everything-but-iam"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      NotAction = ["iam:*", "organizations:*"]
+      Resource  = "*"
+    }]
+  })
+}
+""",
+        "changes": [
+            rc(
+                "aws_iam_policy.everything_but_iam",
+                "aws_iam_policy",
+                ["create"],
+                before=None,
+                after={
+                    "name": "everything-but-iam",
+                    "policy": json.dumps(
+                        {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {"Effect": "Allow", "NotAction": ["iam:*", "organizations:*"], "Resource": "*"}
+                            ],
+                        }
+                    ),
+                },
+            )
+        ],
+    },
+    {
+        "id": "pe007-administrator-access-attached",
+        "title": "AdministratorAccess attached to a service role",
+        "why": (
+            "A managed policy attachment is one line in a plan and is approved as "
+            "boilerplate. This one grants the account."
+        ),
+        "analyzer": "privilege-escalation",
+        "expect": ["PE007"],
+        "forbid": [],
+        "tf": """
+resource "aws_iam_role_policy_attachment" "ci_admin" {
+  role       = aws_iam_role.ci.name
+  policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
+}
+""",
+        "changes": [
+            rc(
+                "aws_iam_role_policy_attachment.ci_admin",
+                "aws_iam_role_policy_attachment",
+                ["create"],
+                before=None,
+                after={"role": "ci", "policy_arn": "arn:aws:iam::aws:policy/AdministratorAccess"},
+            )
+        ],
+    },
+    {
+        "id": "pe008-policy-unknown-until-apply",
+        "title": "An IAM policy rendered from a value Terraform cannot resolve",
+        "why": (
+            "Approving the plan approves a set of permissions nobody has read. Reporting "
+            "nothing here is indistinguishable from reporting that the policy is fine."
+        ),
+        "analyzer": "privilege-escalation",
+        "expect": ["PE008"],
+        "forbid": [],
+        "tf": """
+resource "aws_iam_policy" "generated" {
+  name   = "generated"
+  policy = data.aws_iam_policy_document.generated.json # known after apply
+}
+""",
+        "changes": [
+            rc(
+                "aws_iam_policy.generated",
+                "aws_iam_policy",
+                ["update"],
+                before={"name": "generated", "policy": '{"Version":"2012-10-17","Statement":[]}'},
+                after={"name": "generated"},
+                after_unknown={"policy": True},
+            )
+        ],
+    },
     # ---------------- negative controls ----------------
     {
         "id": "nc001-https-served-to-the-public-on-purpose",
@@ -1134,6 +2074,181 @@ resource "aws_launch_template" "workers" {
                 after={"name_prefix": "workers-", "image_id": "ami-new", "instance_type": "m6i.large"},
                 action_reason="replace_because_cannot_update",
                 replace_paths=[["image_id"]],
+            )
+        ],
+    },
+
+    {
+        "id": "nc005-iam-policy-narrowed",
+        "title": "A policy whose wildcard is replaced with specific actions",
+        "why": (
+            "A strict improvement. A tool that reports this cannot tell the direction of a "
+            "change, only that one happened, and the team learns to ignore it."
+        ),
+        "analyzer": "privilege-escalation",
+        "benign": True,
+        "expect": [],
+        "forbid": ["PE001", "PE004", "PE006"],
+        "tf": """
+resource "aws_iam_policy" "ci_deploy" {
+  name   = "ci-deploy"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["s3:GetObject", "s3:PutObject"] # was "*"
+      Resource = ["arn:aws:s3:::artifacts/*"]     # was "*"
+    }]
+  })
+}
+""",
+        "changes": [
+            rc(
+                "aws_iam_policy.ci_deploy",
+                "aws_iam_policy",
+                ["update"],
+                before={
+                    "name": "ci-deploy",
+                    "policy": json.dumps(
+                        {"Version": "2012-10-17", "Statement": [{"Sid": "Deploy", "Effect": "Allow", "Action": "*", "Resource": "*"}]}
+                    ),
+                },
+                after={
+                    "name": "ci-deploy",
+                    "policy": json.dumps(
+                        {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Sid": "Deploy",
+                                    "Effect": "Allow",
+                                    "Action": ["s3:GetObject", "s3:PutObject"],
+                                    "Resource": ["arn:aws:s3:::artifacts/*"],
+                                }
+                            ],
+                        }
+                    ),
+                },
+            )
+        ],
+    },
+    {
+        "id": "nc006-trust-policy-scoped-to-a-named-account",
+        "title": "A cross-account trust policy naming one role, with an ExternalId",
+        "why": (
+            "This is what a correct cross-account grant looks like. Reporting it would make "
+            "every legitimate integration a finding."
+        ),
+        "analyzer": "privilege-escalation",
+        "benign": True,
+        "expect": [],
+        "forbid": ["PE003"],
+        "tf": """
+resource "aws_iam_role" "vendor_access" {
+  name = "vendor-access"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { AWS = "arn:aws:iam::444455556666:role/vendor" }
+      Action    = "sts:AssumeRole"
+      Condition = { StringEquals = { "sts:ExternalId" = var.external_id } }
+    }]
+  })
+}
+""",
+        "changes": [
+            rc(
+                "aws_iam_role.vendor_access",
+                "aws_iam_role",
+                ["create"],
+                before=None,
+                after={
+                    "name": "vendor-access",
+                    "assume_role_policy": json.dumps(
+                        {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Principal": {"AWS": "arn:aws:iam::444455556666:role/vendor"},
+                                    "Action": "sts:AssumeRole",
+                                    "Condition": {"StringEquals": {"sts:ExternalId": "a-shared-secret"}},
+                                }
+                            ],
+                        }
+                    ),
+                },
+            )
+        ],
+    },
+    {
+        "id": "nc007-route-to-a-nat-gateway",
+        "title": "A private subnet's default route pointing at a NAT gateway",
+        "why": (
+            "This is how a private subnet is supposed to reach out. It is a default route, "
+            "so a rule keyed on 0.0.0.0/0 alone would report it; the target is what matters."
+        ),
+        "analyzer": "network-exposure",
+        "benign": True,
+        "expect": [],
+        "forbid": ["NE013"],
+        "tf": """
+resource "aws_route" "private_egress" {
+  route_table_id         = aws_route_table.private.id
+  destination_cidr_block = "0.0.0.0/0"
+  nat_gateway_id         = aws_nat_gateway.main.id
+}
+""",
+        "changes": [
+            rc(
+                "aws_route.private_egress",
+                "aws_route",
+                ["create"],
+                before=None,
+                after={
+                    "route_table_id": "rtb-0private00000000",
+                    "destination_cidr_block": "0.0.0.0/0",
+                    "nat_gateway_id": "nat-0abc123456789def0",
+                },
+            )
+        ],
+    },
+    {
+        "id": "nc008-network-acl-allow-for-an-internal-range",
+        "title": "A network ACL allow entry scoped to the VPC range",
+        "why": (
+            "Allow entries are normal; the question is what they admit. Reporting every "
+            "allow would make the rule useless on any real network ACL."
+        ),
+        "analyzer": "network-exposure",
+        "benign": True,
+        "expect": [],
+        "forbid": ["NE008", "NE016"],
+        "tf": """
+resource "aws_network_acl_rule" "allow_vpc" {
+  network_acl_id = aws_network_acl.private.id
+  rule_number    = 110
+  egress         = false
+  protocol       = "-1"
+  rule_action    = "allow"
+  cidr_block     = "10.0.0.0/16"
+}
+""",
+        "changes": [
+            rc(
+                "aws_network_acl_rule.allow_vpc",
+                "aws_network_acl_rule",
+                ["create"],
+                before=None,
+                after={
+                    "network_acl_id": "acl-0private000000000",
+                    "rule_number": 110,
+                    "egress": False,
+                    "protocol": "-1",
+                    "rule_action": "allow",
+                    "cidr_block": "10.0.0.0/16",
+                },
             )
         ],
     },

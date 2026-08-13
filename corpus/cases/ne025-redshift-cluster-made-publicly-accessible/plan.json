@@ -1,0 +1,49 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.8",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_redshift_cluster.warehouse",
+          "mode": "managed",
+          "type": "aws_redshift_cluster",
+          "name": "warehouse",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "cluster_identifier": "warehouse-prod",
+            "publicly_accessible": true
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_redshift_cluster.warehouse",
+      "mode": "managed",
+      "type": "aws_redshift_cluster",
+      "name": "warehouse",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "update"
+        ],
+        "before": {
+          "cluster_identifier": "warehouse-prod",
+          "publicly_accessible": false
+        },
+        "after": {
+          "cluster_identifier": "warehouse-prod",
+          "publicly_accessible": true
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": false
+      }
+    }
+  ],
+  "output_changes": {}
+}

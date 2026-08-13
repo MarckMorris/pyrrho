@@ -1,0 +1,75 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.8",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_ec2_managed_prefix_list.corporate",
+          "mode": "managed",
+          "type": "aws_ec2_managed_prefix_list",
+          "name": "corporate",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "name": "corporate-egress",
+            "max_entries": 20,
+            "entry": [
+              {
+                "cidr": "203.0.113.0/24",
+                "description": "head office"
+              },
+              {
+                "cidr": "0.0.0.0/0",
+                "description": "temporary while the VPN is down"
+              }
+            ]
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_ec2_managed_prefix_list.corporate",
+      "mode": "managed",
+      "type": "aws_ec2_managed_prefix_list",
+      "name": "corporate",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "update"
+        ],
+        "before": {
+          "name": "corporate-egress",
+          "max_entries": 20,
+          "entry": [
+            {
+              "cidr": "203.0.113.0/24",
+              "description": "head office"
+            }
+          ]
+        },
+        "after": {
+          "name": "corporate-egress",
+          "max_entries": 20,
+          "entry": [
+            {
+              "cidr": "203.0.113.0/24",
+              "description": "head office"
+            },
+            {
+              "cidr": "0.0.0.0/0",
+              "description": "temporary while the VPN is down"
+            }
+          ]
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": false
+      }
+    }
+  ],
+  "output_changes": {}
+}

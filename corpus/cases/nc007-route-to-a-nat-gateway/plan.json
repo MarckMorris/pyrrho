@@ -1,0 +1,48 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.8",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_route.private_egress",
+          "mode": "managed",
+          "type": "aws_route",
+          "name": "private_egress",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "route_table_id": "rtb-0private00000000",
+            "destination_cidr_block": "0.0.0.0/0",
+            "nat_gateway_id": "nat-0abc123456789def0"
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_route.private_egress",
+      "mode": "managed",
+      "type": "aws_route",
+      "name": "private_egress",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "route_table_id": "rtb-0private00000000",
+          "destination_cidr_block": "0.0.0.0/0",
+          "nat_gateway_id": "nat-0abc123456789def0"
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": false
+      }
+    }
+  ],
+  "output_changes": {}
+}

@@ -1,0 +1,37 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.8",
+  "planned_values": {
+    "root_module": {
+      "resources": []
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_network_acl_rule.deny_from_dmz",
+      "mode": "managed",
+      "type": "aws_network_acl_rule",
+      "name": "deny_from_dmz",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "delete"
+        ],
+        "before": {
+          "network_acl_id": "acl-0private000000000",
+          "rule_number": 90,
+          "egress": false,
+          "protocol": "-1",
+          "rule_action": "deny",
+          "cidr_block": "10.90.0.0/16"
+        },
+        "after": null,
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": false
+      },
+      "action_reason": "delete_because_no_resource_config"
+    }
+  ],
+  "output_changes": {}
+}

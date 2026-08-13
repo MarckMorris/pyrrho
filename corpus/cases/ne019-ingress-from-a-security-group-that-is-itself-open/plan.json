@@ -1,0 +1,123 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.8",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_security_group_rule.db_from_web",
+          "mode": "managed",
+          "type": "aws_security_group_rule",
+          "name": "db_from_web",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "type": "ingress",
+            "security_group_id": "sg-0db000000000000",
+            "source_security_group_id": "sg-0web00000000000",
+            "from_port": 5432,
+            "to_port": 5432,
+            "protocol": "tcp",
+            "cidr_blocks": [],
+            "ipv6_cidr_blocks": []
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_security_group.web",
+      "mode": "managed",
+      "type": "aws_security_group",
+      "name": "web",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "no-op"
+        ],
+        "before": {
+          "name": "web",
+          "description": "Managed by Terraform: web",
+          "vpc_id": "vpc-0a1b2c3d4e5f60718",
+          "ingress": [
+            {
+              "from_port": 0,
+              "to_port": 65535,
+              "protocol": "tcp",
+              "cidr_blocks": [
+                "0.0.0.0/0"
+              ],
+              "ipv6_cidr_blocks": [],
+              "prefix_list_ids": [],
+              "security_groups": [],
+              "self": false,
+              "description": "public tier"
+            }
+          ],
+          "egress": [],
+          "tags": {
+            "ManagedBy": "terraform"
+          },
+          "id": "sg-0web00000000000"
+        },
+        "after": {
+          "name": "web",
+          "description": "Managed by Terraform: web",
+          "vpc_id": "vpc-0a1b2c3d4e5f60718",
+          "ingress": [
+            {
+              "from_port": 0,
+              "to_port": 65535,
+              "protocol": "tcp",
+              "cidr_blocks": [
+                "0.0.0.0/0"
+              ],
+              "ipv6_cidr_blocks": [],
+              "prefix_list_ids": [],
+              "security_groups": [],
+              "self": false,
+              "description": "public tier"
+            }
+          ],
+          "egress": [],
+          "tags": {
+            "ManagedBy": "terraform"
+          },
+          "id": "sg-0web00000000000"
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": false
+      }
+    },
+    {
+      "address": "aws_security_group_rule.db_from_web",
+      "mode": "managed",
+      "type": "aws_security_group_rule",
+      "name": "db_from_web",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "type": "ingress",
+          "security_group_id": "sg-0db000000000000",
+          "source_security_group_id": "sg-0web00000000000",
+          "from_port": 5432,
+          "to_port": 5432,
+          "protocol": "tcp",
+          "cidr_blocks": [],
+          "ipv6_cidr_blocks": []
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": false
+      }
+    }
+  ],
+  "output_changes": {}
+}

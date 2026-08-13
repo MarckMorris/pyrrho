@@ -43,30 +43,30 @@ $ echo $?
 
 ## What is not here
 
-This is release 0.1.0 and it ships **two analyzers, for Terraform plans only**.
+This is release 0.2.0 and it ships **three analyzers, for Terraform plans only**.
 The following are named in the design and are **not implemented**:
 
 | Not implemented | What it would do |
 |---|---|
 | `blast-radius` | Trace what else depends on a changed resource, and who loses access |
-| `privilege-escalation` | Diff IAM policies and report the *delta*, not the whole policy |
 | `compliance-drift` | Measure distance from a CIS baseline |
 
 Also not covered, and worth knowing before you rely on it:
 
 - **Kubernetes manifests and CloudFormation are not read.** Terraform plan JSON only.
-- **Rules sourced from a security group ID or a prefix list are not resolved.**
-  pyrrho reads CIDRs. If a rule says "allow from `sg-abc123`", pyrrho does not know
-  what is in `sg-abc123`.
-- **Routing is not analyzed.** A subnet moved to a public route table, a VPC peering
-  connection, a transit gateway attachment — none of these are examined.
+- **A referenced security group is only followed when it is in the same plan.**
+  `NE014` resolves `sg-abc123` against the other groups the plan touches. A group
+  that already exists and is not otherwise being changed has no rules in the plan
+  to read, and pyrrho says so rather than passing over it.
+- **Only AWS.** The resource-type tables are AWS, with a handful of GCP and Azure
+  entries in `real-diff`. Nothing here is provider-agnostic yet.
 - **No corpus case has been captured from a live `terraform plan`.** The parser
   *is* validated against 36 plan documents Terraform itself produced — see
   [What is verified, and how](#what-is-verified-and-how) — but the corpus that
   drives the benchmark is written to the documented format, not captured.
 
-A clean pyrrho run means "these two analyzers found nothing", not "this change is
-safe". The tool says so in its own output.
+A clean pyrrho run means "these three analyzers found nothing", not "this change
+is safe". The tool says so in its own output.
 
 ---
 
@@ -104,16 +104,16 @@ pip install checkov && python scripts/compare_checkov.py
 ```
 
 ```
-  pyrrho   detected 22/23 dangerous (96%)   false alarms 1/4 controls
-  checkov  detected 15/23 dangerous (65%)   false alarms 3/4 controls
+  pyrrho   detected 45/46 dangerous (98%)   false alarms 1/8 controls
+  checkov  detected 28/46 dangerous (61%)   false alarms 4/8 controls
 ```
 
 **Read that fairly, because the framing does a lot of work.** Checkov is not
-trying to do delta analysis; its three false alarms are failures against
-*pyrrho's* definition of the job, not against its own. On its own terms — "does
-this end state violate a policy" — Checkov is right every time. It has hundreds
-of policies pyrrho will never have, and it covers Kubernetes, CloudFormation,
-Helm and more.
+trying to do delta analysis; its false alarms are failures against *pyrrho's*
+definition of the job, not against its own. On its own terms — "does this end
+state violate a policy" — Checkov is right every time. It has hundreds of
+policies pyrrho will never have, and it covers Kubernetes, CloudFormation, Helm
+and more.
 
 What the numbers do show is that the two tools answer different questions, and
 that the question pyrrho asks is not otherwise being asked:
@@ -123,21 +123,51 @@ that the question pyrrho asks is not otherwise being asked:
 | `nc002` tag edit on a group already open to the world | quiet | `CKV_AWS_24` | Checkov evaluates the end state, so pre-existing exposure is reported on a change that did not cause it |
 | `nc003` SSH range narrowed from `0.0.0.0/0` to `10.20.0.0/16` | quiet | `CKV_AWS_23` | An improvement, reported as a problem |
 | `rd001` production database destroyed | `RD001` critical | — | A destroyed resource is absent from the end state, so there is nothing left to evaluate |
-| `rd003` NAT gateway replaced destroy-first | `RD003` | — | Downtime is a property of the transition, not of either state |
-| `ne004` source range widened `/24` → `/8` | `NE004` | — | Both states contain a CIDR; only the comparison shows the problem |
-| `ne003` PostgreSQL via `aws_vpc_security_group_ingress_rule` | `NE001` critical | — | The newer rule resource shape |
+| `rd011` CloudTrail destroyed | `RD009` high | — | Same shape: after the apply there is no trail resource to have an opinion about |
+| `rd012` backup retention set to zero | `RD010` high | — | A valid end state. The harm is the transition |
+| `ne021` network ACL deny entry deleted | `NE016` high | — | Removing a deny leaves nothing behind to object to |
+| `pe005` MFA condition removed from a policy | `PE005` high | — | The statement grants the same actions before and after; only the guard rail is gone |
+| `ne004` source range widened `/24` → `/8` | `NE001` high | — | Both states contain a CIDR; only the comparison shows the problem |
+| `ne014` internet split into `0.0.0.0/1` + `128.0.0.0/1` | `NE002` critical | `CKV_AWS_24` | Both catch it, for different reasons |
+| `ne019` rule sourced from a group that is itself open | `NE014` high | — | The reference reads as scoped; following it is what shows otherwise |
 
-The `rd001`/`rd003` rows are the structural point. A scanner that reads the
-planned end state **cannot** see a destroy, because the thing that matters is the
-resource that is no longer there.
+The `rd001` / `rd011` / `ne021` rows are the structural point. A scanner that
+reads the planned end state **cannot** see a destroy, because the thing that
+matters is the resource that is no longer there.
 
-Two honest marks against pyrrho in that table's own run: it reports a `low` note
-on `nc001`, a deliberately public HTTPS rule, which is counted here as a false
-alarm with no exemption Checkov does not also get; and it misses `rd007` because
-`--claim` is withheld, there being no Checkov equivalent to compare against.
+One honest mark against pyrrho in that run: it reports a `low` note on `nc001`,
+a deliberately public HTTPS rule, which is counted as a false alarm here with no
+exemption Checkov does not also get. It also misses `rd007`, because `--claim`
+has no Checkov equivalent and is withheld to keep the comparison like for like.
 
 **These tools are complements, not substitutes.** Run Checkov for policy
 coverage. Run pyrrho for what this change does.
+
+---
+
+## How the rules were found
+
+The first release had twelve network rules and eight diff rules, all written by
+reasoning about what could go wrong. Then an adversarial audit was run against
+the analyzers with one instruction: *find changes this code would review and
+report nothing about.* It returned twelve false negatives, each verified by
+constructing the plan and watching pyrrho stay silent.
+
+That audit is where most of this release came from. The worst of them:
+
+| What it missed | Why the check failed | Now |
+|---|---|---|
+| `cidr_blocks = ["0.0.0.0/1", "128.0.0.0/1"]` | Every world check tested one block for `prefixlen == 0`. Two halves are the whole internet and each half is an ordinary CIDR | `cidr.covers_internet` collapses the set first |
+| A brand-new public source on a database port | The widening branch required a *prior* CIDR to exist, so a rule that had only security-group sources reported nothing when it gained a public `/24` | Severity now scales with reach, with no prior-value precondition |
+| A world-open rule whose ports are unknown | `all([])` is `True`, so an unresolved port range was judged "web ports only" and reported `low` | An unknown range is `NE003` at `high`, and says it cannot be reviewed |
+| `aws_default_security_group` | One word different from `aws_security_group`, and it applies to every ENI in the VPC with no explicit group | Both types share the extraction path |
+| A network ACL `deny` entry deleted | The check read only `after`. After the change there is nothing there to object to | `NE016`, comparing both sides |
+| CloudTrail destroyed | In none of the three lookup tables | `RD009` |
+| `backup_retention_period` set to `0` | Not a guard attribute by name, and it deletes the backups already taken | `RD010` |
+
+Two of those — the split internet and the unknown-port downgrade — are evasions
+rather than oversights: a change written that way passes review *because* it
+reads as scoped. Both now have corpus cases, so they stay caught.
 
 ---
 
@@ -256,46 +286,98 @@ cannot tell which half was mechanically checked.
 | `RD006` | Sensitive value changes without showing what changed |
 | `RD007` | Plan touches resources outside the declared scope |
 | `RD008` | Security-relevant attribute unknown until apply |
+| `RD009` | Audit or logging trail removed |
+| `RD010` | Recoverability weakened |
 
 **`network-exposure` — what the plan makes reachable**
 
 | | |
 |---|---|
-| `NE001` | Administrative or data service opened to the internet |
+| `NE001` | Administrative or data service opened to a public network |
 | `NE002` | Every port opened to the entire internet |
 | `NE003` | New internet-facing ingress rule |
 | `NE004` | Ingress source widened |
 | `NE005` | S3 public access guard disabled or removed |
-| `NE006` | Database instance made publicly accessible |
+| `NE006` | Database or warehouse made publicly accessible |
 | `NE007` | Load balancer changed from internal to internet-facing |
 | `NE008` | Network ACL allows the internet, removing subnet segmentation |
 | `NE009` | Unrestricted egress to the internet |
 | `NE010` | Kubernetes API server reachable from the internet |
 | `NE011` | Resource assigned a public IP address |
 | `NE012` | Security group rules unknown until apply |
+| `NE013` | Subnet becomes publicly routable |
+| `NE014` | Ingress sourced from a security group that is itself open |
+| `NE015` | Two network segments joined |
+| `NE016` | Network ACL deny boundary removed |
+| `NE017` | Resource policy grants access to any principal |
+| `NE018` | Managed prefix list widened |
 
-`NE012` is the one that tends to be missing elsewhere. When a rule set comes from
-a module output Terraform cannot resolve at plan time, the honest output is *"this
-cannot be reviewed before it exists"*. A scanner that reads only the `after` block
-sees an empty ingress list and reports no findings, which reads identically to a
-clean result.
+**`privilege-escalation` — what an identity can do that it could not before**
 
-### Three things the network rules get right that string matching does not
+| | |
+|---|---|
+| `PE001` | Statement grants every action, or every action on every resource |
+| `PE002` | `iam:PassRole` granted with an unrestricted target |
+| `PE003` | Role trust policy accepts an unbounded principal |
+| `PE004` | Privilege escalation primitive granted |
+| `PE005` | Condition removed from an existing Allow statement |
+| `PE006` | Allow statement written with `NotAction` or `NotResource` |
+| `PE007` | Broad AWS-managed policy attached |
+| `PE008` | IAM policy unknown until apply |
 
-**Containment, not equality.** `NE004` uses real CIDR arithmetic. Widening
-`198.51.100.0/24` to `198.0.0.0/8` is still "a CIDR" in the diff and admits 65,536
-times more addresses. Narrowing `0.0.0.0/0` to `10.20.0.0/16` is an improvement and
-is not reported.
+### Five things the rules do that string matching does not
+
+**Containment, not equality.** `NE001` and `NE004` use real CIDR arithmetic.
+Widening `198.51.100.0/24` to `198.0.0.0/8` is still "a CIDR" in the diff and
+admits 65,536 times more addresses. Narrowing `0.0.0.0/0` to `10.20.0.0/16` is an
+improvement and is not reported.
+
+**The whole internet, however it is spelled.** `0.0.0.0/1` and `128.0.0.0/1`
+cover the same space as `0.0.0.0/0`, and so do four `/2`s. `cidr.covers_internet`
+collapses the set before judging it, so the reach is what it is rather than what
+it looks like.
 
 **Ranges, not ports.** `1024-65535` is one line in a diff. It contains Redis,
 MongoDB, Elasticsearch and the kubelet. `NE001` enumerates every service a range
-swallows.
+swallows, and an *unknown* range is reported as unreviewable rather than empty.
 
-**All three provider shapes.** AWS expresses security group rules three different
-ways — inline `ingress` blocks on `aws_security_group`, the legacy
-`aws_security_group_rule`, and the current `aws_vpc_security_group_ingress_rule`
-with entirely different attribute names (`cidr_ipv4`, `ip_protocol`). A checker
-written against one shape silently reports nothing on the others.
+**Following the reference.** `NE014` resolves a rule sourced from `sg-abc123`
+against the other groups in the plan. Referencing a group instead of a CIDR is
+the advice everyone gives; it is only a restriction if the referenced group is
+one.
+
+**The IAM delta, statement by statement.** `PE005` pairs statements across
+`before` and `after`, so a statement that kept its actions and lost its
+`MultiFactorAuthPresent` condition is reported as a weakening. Nothing about the
+resulting policy records that the condition was ever there.
+
+---
+
+## Use it in a pull request
+
+The repository is also a GitHub Action.
+
+```yaml
+- name: Review the plan
+  uses: MarckMorris/pyrrho@v0.2.0
+  with:
+    plan: plan.json
+    fail-on: high
+    claim: "module.network.*,aws_security_group.*"
+    sarif-location: infra/network.tf
+```
+
+It installs pyrrho, reviews the plan, writes the verdict to the workflow's job
+summary, posts it as a pull request comment — updating the same comment on each
+push rather than adding one per commit — and fails the job when the verdict is
+`block`. Outputs are `verdict`, `findings`, `worst-severity` and `markdown`.
+
+The comment leads with the verdict and a one-line reason, puts the findings in a
+table, and folds the evidence into a `<details>` block. A review comment that
+opens with three screens of JSON is a review comment nobody reads.
+
+For the comment you need `pull-requests: write`; for the Security tab upload,
+`security-events: write`.
 
 ---
 
@@ -310,14 +392,14 @@ python scripts/generate_corpus.py && python scripts/benchmark.py --verbose
 
 ```
 pyrrho benchmark
-  corpus: 23 dangerous cases, 4 benign controls
-  cases captured from a real terraform plan: 0/27
+  corpus: 46 dangerous cases, 8 benign controls
+  cases captured from a real terraform plan: 0/54
 
-  detection    23/23 dangerous cases fully detected (100%)
-  false alarms 0/27 cases (0%)
+  detection    46/46 dangerous cases fully detected (100%)
+  false alarms 0/54 cases (0%)
 ```
 
-Test suite: **468 tests, 98% line coverage**, on Python 3.10, 3.11 and 3.12.
+Test suite: **747 tests, 98% line coverage**, on Python 3.10, 3.11 and 3.12.
 
 ```bash
 pytest -q --cov=pyrrho --cov-report=term-missing
@@ -336,11 +418,13 @@ is actually good for:
 - **as a specification** — `corpus/manifest.json` states, per case, which rules
   must fire and which must not.
 
-The **false-alarm figure is the more informative one**. The four benign controls
-are changes a naive checker gets wrong: HTTPS served to the public on purpose,
-a tag edit on a group that was already open, a source range being *narrowed*, and
-a stateless resource being replaced. A tool that flags those is a tool that gets
-disabled in a month.
+The **false-alarm figure is the more informative one**. The eight benign
+controls are changes a naive checker gets wrong: HTTPS served to the public on
+purpose, a tag edit on a group that was already open, a source range being
+*narrowed*, a stateless resource being replaced, an IAM policy being tightened, a
+correctly scoped cross-account trust with an `ExternalId`, a default route to a
+NAT gateway, and a network ACL allow for the VPC range. A tool that flags those
+is a tool that gets disabled in a month.
 
 There is no random sampling anywhere, so there is no seed to fix. The corpus is a
 fixed set of files and the analyzers are deterministic, which means two runs on
@@ -403,7 +487,7 @@ caveat still stands in full.
 
 The plan JSON in `corpus/cases/*/plan.json` is **written to Terraform's documented
 plan format, not captured from a live `terraform plan` against a real cloud
-account.** The benchmark prints `cases captured from a real terraform plan: 0/27`
+account.** The benchmark prints `cases captured from a real terraform plan: 0/54`
 and `tests/test_corpus.py` fails if anyone flips that flag without updating this
 section.
 
@@ -429,8 +513,9 @@ pyrrho/
 │   ├── plan.py                 Terraform plan JSON reader
 │   ├── cidr.py                 containment and widening arithmetic
 │   ├── ports.py                port classification
+│   ├── policy.py               IAM policy parsing and statement diffing
 │   ├── core.py                 findings, report, verdict, analyzer registry
-│   ├── analyzers/              the two analyzers
+│   ├── analyzers/              the three analyzers
 │   ├── sarif.py                SARIF 2.1.0
 │   ├── baseline.py             incremental adoption
 │   ├── attest.py               signed record of the review
@@ -438,6 +523,7 @@ pyrrho/
 ├── corpus/                     the specification and the benchmark input
 │   ├── manifest.json           per case: which rules must fire, which must not
 │   └── cases/<id>/{main.tf,plan.json}
+├── action.yml                  the reusable GitHub Action
 ├── agents/                     Claude Code subagents
 ├── skills/review/SKILL.md      Claude Code skill
 ├── bin/pyrrho                  wrapper so the plugin works without an install

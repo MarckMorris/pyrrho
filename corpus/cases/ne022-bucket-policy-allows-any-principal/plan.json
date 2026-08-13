@@ -1,0 +1,46 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.8",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_s3_bucket_policy.assets",
+          "mode": "managed",
+          "type": "aws_s3_bucket_policy",
+          "name": "assets",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "bucket": "acme-prod-assets",
+            "policy": "{\"Version\": \"2012-10-17\", \"Statement\": [{\"Sid\": \"PublicRead\", \"Effect\": \"Allow\", \"Principal\": \"*\", \"Action\": [\"s3:GetObject\", \"s3:ListBucket\"], \"Resource\": [\"arn:aws:s3:::acme-prod-assets/*\"]}]}"
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_s3_bucket_policy.assets",
+      "mode": "managed",
+      "type": "aws_s3_bucket_policy",
+      "name": "assets",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "bucket": "acme-prod-assets",
+          "policy": "{\"Version\": \"2012-10-17\", \"Statement\": [{\"Sid\": \"PublicRead\", \"Effect\": \"Allow\", \"Principal\": \"*\", \"Action\": [\"s3:GetObject\", \"s3:ListBucket\"], \"Resource\": [\"arn:aws:s3:::acme-prod-assets/*\"]}]}"
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": false
+      }
+    }
+  ],
+  "output_changes": {}
+}

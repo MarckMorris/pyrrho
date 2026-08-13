@@ -63,9 +63,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser.add_argument(
         "--format",
-        choices=("text", "json"),
+        choices=("text", "json", "markdown"),
         default="text",
-        help="output format for the report (default: text)",
+        help=(
+            "output format for the report (default: text). markdown is meant for a "
+            "pull request comment or a CI job summary"
+        ),
     )
     parser.add_argument(
         "--analyzer",
@@ -221,6 +224,89 @@ def render_text(report: Report, threshold: Severity, color: bool, quiet: bool, o
     )
 
 
+_VERDICT_MARKDOWN = {
+    Verdict.PASS: ("Nothing to object to", "No findings from the analyzers that ran."),
+    Verdict.WARN: (
+        "Findings below the blocking threshold",
+        "Worth reading before you merge; not enough to block on its own.",
+    ),
+    Verdict.BLOCK: (
+        "Blocked",
+        "At least one finding is at or above the threshold this pipeline blocks on.",
+    ),
+}
+
+
+def render_markdown(report: Report, threshold: Severity, verdict: Verdict) -> str:
+    """A report shaped for a pull request comment or a CI job summary.
+
+    Deliberately front-loaded: the verdict and the one-line reason come first,
+    the evidence is behind a fold. A review comment that opens with three
+    screens of JSON is a review comment nobody reads.
+    """
+    headline, subtitle = _VERDICT_MARKDOWN[verdict]
+    counts = report.by_severity()
+    tally = ", ".join(f"{counts[s.value]} {s.value}" for s in Severity if counts[s.value])
+
+    lines: list[str] = [
+        f"## pyrrho: {headline}",
+        "",
+        subtitle,
+        "",
+        f"Reviewed **{report.resources_examined}** changing resource(s)"
+        + (f" with terraform {report.terraform_version}" if report.terraform_version else "")
+        + f". Threshold: `{threshold.value}`.",
+        "",
+    ]
+
+    if tally:
+        lines += [f"**{tally}**", ""]
+
+    if not report.findings:
+        lines += [
+            "No findings. That is not the same as safe: pyrrho only checks what its "
+            f"analyzers cover, and this run used {', '.join(sorted(report.analyzers))}.",
+            "",
+        ]
+    else:
+        lines += ["| | Rule | Resource | What changes |", "|---|---|---|---|"]
+        for finding in report.sorted_findings():
+            mark = "~~" if finding.suppressed else ""
+            summary = finding.detail.split(". ")[0].rstrip(".")
+            lines.append(
+                f"| `{finding.severity.value}` | {mark}`{finding.rule_id}`{mark} | "
+                f"`{finding.resource}` | {summary} |"
+            )
+        lines.append("")
+
+        lines += ["<details><summary>Evidence for each finding</summary>", ""]
+        for finding in report.sorted_findings():
+            lines += [
+                f"#### `{finding.rule_id}` {finding.title}",
+                "",
+                f"**Resource** `{finding.resource}`  ",
+                f"**Severity** {finding.severity.value}"
+                + ("  \n**Suppressed by baseline**" if finding.suppressed else ""),
+                "",
+                finding.detail,
+                "",
+            ]
+            if finding.evidence:
+                rendered = json.dumps(finding.evidence, indent=2, default=str, sort_keys=True)
+                lines += ["Read from the plan:", "", "```json", rendered, "```", ""]
+            if finding.remediation:
+                lines += [f"**Fix.** {finding.remediation}", ""]
+        lines += ["</details>", ""]
+
+    if report.plan_digest:
+        lines += [
+            "<sub>Plan reviewed: `sha256:" + report.plan_digest[:16] + "`. "
+            "Every claim above is derived from values in that plan; the evidence block "
+            "shows which ones.</sub>",
+        ]
+    return "\n".join(lines)
+
+
 def _wrap(text: str, width: int) -> list[str]:
     words = text.split()
     lines: list[str] = []
@@ -312,7 +398,9 @@ def main(argv: Sequence[str] | None = None, out: TextIO | None = None, err: Text
     if args.attest:
         _write(args.attest, attest.dumps(report, threshold, verdict), err)
 
-    if args.format == "json":
+    if args.format == "markdown":
+        print(render_markdown(report, threshold, verdict), file=out)
+    elif args.format == "json":
         payload: dict[str, Any] = report.to_dict()
         payload["threshold"] = threshold.value
         payload["verdict"] = verdict.value

@@ -8,6 +8,8 @@ is what stops the tool from being either noisy or useless.
 
 from __future__ import annotations
 
+from typing import Any
+
 # Ports whose exposure to the internet is a design decision, not an incident.
 PUBLIC_BY_DESIGN: dict[int, str] = {
     80: "HTTP",
@@ -74,6 +76,31 @@ ADMIN_AND_DATA: dict[int, str] = {
 # The whole port space, as Terraform expresses it in different providers.
 ALL_PORTS = (0, 65535)
 
+# AWS accepts either the IANA protocol number or its name, and Terraform passes
+# through whichever the author wrote. `protocol = "6"` and `protocol = "tcp"` are
+# the same rule; a checker that compares the string sees two different ones.
+PROTOCOL_NUMBERS: dict[str, str] = {
+    "1": "icmp",
+    "6": "tcp",
+    "17": "udp",
+    "41": "ipv6",
+    "47": "gre",
+    "50": "esp",
+    "51": "ah",
+    "58": "icmpv6",
+    "132": "sctp",
+}
+
+ANY_PROTOCOL = {"-1", "all"}
+
+
+def canonical_protocol(protocol: Any) -> str:
+    """One spelling per protocol, so rules can be compared and paired."""
+    text = str(protocol or "").strip().lower()
+    if text in ANY_PROTOCOL:
+        return "-1"
+    return PROTOCOL_NUMBERS.get(text, text)
+
 
 def is_all_ports(from_port: int | None, to_port: int | None, protocol: str) -> bool:
     """True when the rule covers every port of every protocol.
@@ -81,7 +108,7 @@ def is_all_ports(from_port: int | None, to_port: int | None, protocol: str) -> b
     AWS expresses "all traffic" as protocol ``-1`` with the ports unset, and
     also accepts an explicit 0-65535 TCP range, which is the same thing for TCP.
     """
-    if str(protocol).strip() in {"-1", "all", "ALL"}:
+    if canonical_protocol(protocol) == "-1":
         return True
     if from_port is None or to_port is None:
         return False
@@ -112,9 +139,9 @@ def sensitive_in_range(from_port: int | None, to_port: int | None, protocol: str
 
 def describe(from_port: int | None, to_port: int | None, protocol: str) -> str:
     """Human label for the port range, used in messages and evidence."""
-    proto = str(protocol).strip()
+    proto = canonical_protocol(protocol)
     if is_all_ports(from_port, to_port, protocol):
-        return "all ports, all protocols" if proto in {"-1", "all", "ALL"} else f"all {proto} ports"
+        return "all ports, all protocols" if proto == "-1" else f"all {proto} ports"
     if from_port is None or to_port is None:
         return f"{proto} (unspecified ports)"
     if from_port == to_port:

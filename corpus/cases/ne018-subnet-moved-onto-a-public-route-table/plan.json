@@ -1,0 +1,84 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.8",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_route_table_association.app",
+          "mode": "managed",
+          "type": "aws_route_table_association",
+          "name": "app",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "subnet_id": "subnet-0app0000000000",
+            "route_table_id": "rtb-0public000000000"
+          },
+          "sensitive_values": {}
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_route_table.public",
+      "mode": "managed",
+      "type": "aws_route_table",
+      "name": "public",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "no-op"
+        ],
+        "before": {
+          "id": "rtb-0public000000000",
+          "route": [
+            {
+              "cidr_block": "0.0.0.0/0",
+              "destination_cidr_block": "0.0.0.0/0",
+              "gateway_id": "igw-0abc123456789def0"
+            }
+          ]
+        },
+        "after": {
+          "id": "rtb-0public000000000",
+          "route": [
+            {
+              "cidr_block": "0.0.0.0/0",
+              "destination_cidr_block": "0.0.0.0/0",
+              "gateway_id": "igw-0abc123456789def0"
+            }
+          ]
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": false
+      }
+    },
+    {
+      "address": "aws_route_table_association.app",
+      "mode": "managed",
+      "type": "aws_route_table_association",
+      "name": "app",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "update"
+        ],
+        "before": {
+          "subnet_id": "subnet-0app0000000000",
+          "route_table_id": "rtb-0private00000000"
+        },
+        "after": {
+          "subnet_id": "subnet-0app0000000000",
+          "route_table_id": "rtb-0public000000000"
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": false
+      }
+    }
+  ],
+  "output_changes": {}
+}
