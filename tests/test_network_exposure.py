@@ -6,8 +6,6 @@ that decides whether the tool is usable on an estate that already has problems.
 
 from __future__ import annotations
 
-import pytest
-
 from pyrrho.analyzers.network_exposure import NetworkExposure
 from pyrrho import cidr
 from pyrrho.core import Severity

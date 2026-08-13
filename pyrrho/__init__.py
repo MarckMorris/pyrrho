@@ -6,6 +6,7 @@ Named after Pyrrho of Elis, who declined to assert what he could not verify.
 __version__ = "0.2.0"
 
 # Importing the analyzers package populates the registry as a side effect.
-from . import analyzers as _analyzers  # noqa: F401,E402
+# The name is unused on purpose; the import is the point.
+from . import analyzers  # noqa: F401,E402
 
-__all__ = ["__version__"]
+__all__ = ["__version__", "analyzers"]

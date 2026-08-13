@@ -15,7 +15,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .core import Finding, Report
+from .core import Report
 
 FORMAT = "pyrrho-baseline/v1"
 

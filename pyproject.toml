@@ -35,7 +35,7 @@ classifiers = [
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "pytest-cov>=5.0", "pyyaml>=6.0"]
+dev = ["pytest>=8.0", "pytest-cov>=5.0", "pyyaml>=6.0", "pyflakes>=3.0"]
 
 [project.scripts]
 pyrrho = "pyrrho.cli:main"

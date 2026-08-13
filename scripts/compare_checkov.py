@@ -42,7 +42,6 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from pyrrho import cli, plan as plan_mod  # noqa: E402
-from pyrrho.core import Severity  # noqa: E402
 
 CORPUS = ROOT / "corpus"
 
@@ -168,7 +167,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     print(f"pyrrho vs. Checkov {version}, same corpus, same scoring")
-    print(f"  a dangerous case counts as detected when the tool reports anything on it")
+    print("  a dangerous case counts as detected when the tool reports anything on it")
     print(f"  excluded as a corpus artefact: {', '.join(sorted(EXCLUDED_CHECKS))}")
     print()
     header = f"  {'case':52s} {'pyrrho':22s} checkov"

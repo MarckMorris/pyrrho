@@ -39,6 +39,12 @@ jobs:
       - name: Run tests
         run: pytest -v --cov=pyrrho --cov-report=term-missing
 
+      # Splitting a module by copying its import block into four files leaves
+      # four files importing things they do not use. That is invisible in review
+      # and the linter finds it in a second.
+      - name: Lint for unused imports and dead names
+        run: python -m pyflakes pyrrho/ scripts/ tests/
+
   corpus:
     name: Corpus is current and the benchmark passes
     runs-on: ubuntu-latest
