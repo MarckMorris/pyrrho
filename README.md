@@ -4,11 +4,76 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-**Adversarial review of Terraform plans.** It does not deploy. It doubts.
+**A Terraform plan reviewer that compares the change, not the result.**
 
-Point it at a `terraform plan` and it reports what the plan actually does and
-what it newly exposes — with the evidence for every claim, a SARIF file for
-GitHub's Security tab, and an exit code your pipeline can act on.
+It reads the JSON form of a `terraform plan` and answers three questions before
+anyone approves it: what this change really does, what it newly exposes, and
+what an identity can do afterwards that it could not before. Findings come with
+the values they were derived from, a SARIF file for GitHub's Security tab, and
+an exit code your pipeline can act on.
+
+No runtime dependencies. Python 3.10+. One command.
+
+---
+
+## The idea, in two changes
+
+Every other Terraform scanner evaluates the **planned end state** against a
+catalogue of policies. pyrrho compares the planned state against the **prior**
+state. That one difference decides what each tool can see.
+
+**A change that is not yours.** A security group has allowed SSH from the world
+for two years. Your pull request edits a tag.
+
+| | |
+|---|---|
+| A conventional scanner | *"SSH open to 0.0.0.0/0"* — true, and not caused by this change. By the third pull request the team has learned to ignore the tool |
+| pyrrho | Silent. Nothing about the exposure changed |
+
+**A change nobody can see.** Your pull request destroys a production database.
+
+| | |
+|---|---|
+| A conventional scanner | Reads the end state. The database is not in it. There is nothing left to have an opinion about. Silent |
+| pyrrho | `RD001` critical — *this destroys the relational database and its data* |
+
+That is the whole design. The other 34 rules apply the same comparison to
+routing, security group references, IAM policies, backups and audit trails.
+
+Measured on the same corpus, against Checkov 3.3.10:
+
+```
+  pyrrho   detected 45/46 dangerous (98%)   false alarms 1/8 controls
+  checkov  detected 28/46 dangerous (61%)   false alarms 4/8 controls
+```
+
+Those numbers need reading carefully, and
+[Measured against Checkov](#measured-against-checkov) does that — the two tools
+are complements, and Checkov is right on its own terms every time.
+
+---
+
+## What is not here
+
+Release 0.2.0 ships **three analyzers**, for Terraform plan JSON, for AWS.
+Stated up front so a clean run is not mistaken for a clean bill of health:
+
+- **`blast-radius` and `compliance-drift` are not implemented.** They are named
+  in the design and do not exist yet.
+- **AWS only.** The resource tables are AWS, with a few GCP and Azure entries in
+  `real-diff`. Nothing here is provider-agnostic.
+- **Kubernetes manifests and CloudFormation are not read.** Plan JSON only.
+- **No corpus case has been captured from a live `terraform plan`.** The parser
+  *is* validated against 36 plan documents Terraform itself produced — see
+  [What is verified, and how](#what-is-verified-and-how) — but the cases that
+  drive the benchmark are written to the documented format, not captured.
+
+A clean pyrrho run means "these three analyzers found nothing", not "this change
+is safe". The tool says so in its own output.
+
+---
+
+## What it looks like
 
 ```
 $ pyrrho plan.json
@@ -38,58 +103,6 @@ BLOCK  1 critical  threshold: high
 $ echo $?
 1
 ```
-
----
-
-## What is not here
-
-This is release 0.2.0 and it ships **three analyzers, for Terraform plans only**.
-The following are named in the design and are **not implemented**:
-
-| Not implemented | What it would do |
-|---|---|
-| `blast-radius` | Trace what else depends on a changed resource, and who loses access |
-| `compliance-drift` | Measure distance from a CIS baseline |
-
-Also not covered, and worth knowing before you rely on it:
-
-- **Kubernetes manifests and CloudFormation are not read.** Terraform plan JSON only.
-- **A referenced security group is only followed when it is in the same plan.**
-  `NE014` resolves `sg-abc123` against the other groups the plan touches. A group
-  that already exists and is not otherwise being changed has no rules in the plan
-  to read, and pyrrho says so rather than passing over it.
-- **Only AWS.** The resource-type tables are AWS, with a handful of GCP and Azure
-  entries in `real-diff`. Nothing here is provider-agnostic yet.
-- **No corpus case has been captured from a live `terraform plan`.** The parser
-  *is* validated against 36 plan documents Terraform itself produced — see
-  [What is verified, and how](#what-is-verified-and-how) — but the corpus that
-  drives the benchmark is written to the documented format, not captured.
-
-A clean pyrrho run means "these three analyzers found nothing", not "this change
-is safe". The tool says so in its own output.
-
----
-
-## Why it exists
-
-Plenty of tools scan Terraform. The distinguishing choice here is **delta
-discipline**: pyrrho compares the planned state against the prior state and
-reports only what *this change* does.
-
-That sounds like a detail. It is the difference between a tool a team keeps and a
-tool a team switches off. Run a conventional scanner against an estate that has
-been running for five years and it returns hundreds of findings, none of which
-the current pull request caused. The reviewer learns that the tool's output is
-not about their change, and stops reading it.
-
-So: a security group that already allowed SSH from the world before this plan is
-not reported. The corpus contains a case that asserts exactly this
-(`nc002-preexisting-exposure-left-untouched`) and the test suite fails if it ever
-starts reporting.
-
-The second choice is that **every finding carries the values it was derived
-from**. `previously_allowed`, `new_sources`, `widening_factor`, `action_reason`.
-You can check the claim without re-running the tool and without trusting it.
 
 ---
 
@@ -145,30 +158,6 @@ coverage. Run pyrrho for what this change does.
 
 ---
 
-## How the rules were found
-
-The first release had twelve network rules and eight diff rules, all written by
-reasoning about what could go wrong. Then an adversarial audit was run against
-the analyzers with one instruction: *find changes this code would review and
-report nothing about.* It returned twelve false negatives, each verified by
-constructing the plan and watching pyrrho stay silent.
-
-That audit is where most of this release came from. The worst of them:
-
-| What it missed | Why the check failed | Now |
-|---|---|---|
-| `cidr_blocks = ["0.0.0.0/1", "128.0.0.0/1"]` | Every world check tested one block for `prefixlen == 0`. Two halves are the whole internet and each half is an ordinary CIDR | `cidr.covers_internet` collapses the set first |
-| A brand-new public source on a database port | The widening branch required a *prior* CIDR to exist, so a rule that had only security-group sources reported nothing when it gained a public `/24` | Severity now scales with reach, with no prior-value precondition |
-| A world-open rule whose ports are unknown | `all([])` is `True`, so an unresolved port range was judged "web ports only" and reported `low` | An unknown range is `NE003` at `high`, and says it cannot be reviewed |
-| `aws_default_security_group` | One word different from `aws_security_group`, and it applies to every ENI in the VPC with no explicit group | Both types share the extraction path |
-| A network ACL `deny` entry deleted | The check read only `after`. After the change there is nothing there to object to | `NE016`, comparing both sides |
-| CloudTrail destroyed | In none of the three lookup tables | `RD009` |
-| `backup_retention_period` set to `0` | Not a guard attribute by name, and it deletes the backups already taken | `RD010` |
-
-Two of those — the split internet and the unknown-port downgrade — are evasions
-rather than oversights: a change written that way passes review *because* it
-reads as scoped. Both now have corpus cases, so they stay caught.
-
 ---
 
 ## Install
@@ -178,6 +167,8 @@ pip install -e .
 ```
 
 No runtime dependencies. Python 3.10+.
+
+---
 
 ## Use
 
@@ -246,29 +237,35 @@ A CI log line saying "security review passed" is not evidence. This is.
 
 ---
 
-## As a Claude Code plugin
+---
 
-The repository is also a plugin. Loaded, it provides:
+## Use it in a pull request
 
-- `/pyrrho:review` — a skill that drives the whole review
-- two subagents, `network-exposure` and `real-diff`, that run the deterministic
-  pass and then do the judgement work a rule cannot: resolving referenced
-  security groups, tracing what consumes a resource about to be destroyed, and
-  reconciling the plan against what the pull request claims
-- `pyrrho` on `PATH`, working without a separate install
+The repository is also a GitHub Action.
 
-```bash
-claude --plugin-dir /path/to/pyrrho
+```yaml
+- name: Review the plan
+  uses: MarckMorris/pyrrho@v0.2.0
+  with:
+    plan: plan.json
+    fail-on: high
+    claim: "module.network.*,aws_security_group.*"
+    sarif-location: infra/network.tf
 ```
 
-Both agents are declared with `tools: Bash, Read, Grep, Glob` — no `Edit` or
-`Write`. The kit reviews; it does not change infrastructure. That constraint is
-asserted by a test, not just documented.
+It installs pyrrho, reviews the plan, writes the verdict to the workflow's job
+summary, posts it as a pull request comment — updating the same comment on each
+push rather than adding one per commit — and fails the job when the verdict is
+`block`. Outputs are `verdict`, `findings`, `worst-severity` and `markdown`.
 
-Their instructions require them to keep two categories apart in every report:
-findings pyrrho produced, with a rule ID and evidence, and concerns the agent
-formed itself, marked unverified. The value of a second opinion collapses if you
-cannot tell which half was mechanically checked.
+The comment leads with the verdict and a one-line reason, puts the findings in a
+table, and folds the evidence into a `<details>` block. A review comment that
+opens with three screens of JSON is a review comment nobody reads.
+
+For the comment you need `pull-requests: write`; for the Security tab upload,
+`security-events: write`.
+
+---
 
 ---
 
@@ -353,31 +350,33 @@ resulting policy records that the condition was ever there.
 
 ---
 
-## Use it in a pull request
+---
 
-The repository is also a GitHub Action.
+## How the rules were found
 
-```yaml
-- name: Review the plan
-  uses: MarckMorris/pyrrho@v0.2.0
-  with:
-    plan: plan.json
-    fail-on: high
-    claim: "module.network.*,aws_security_group.*"
-    sarif-location: infra/network.tf
-```
+The first release had twelve network rules and eight diff rules, all written by
+reasoning about what could go wrong. Then an adversarial audit was run against
+the analyzers with one instruction: *find changes this code would review and
+report nothing about.* It returned twelve false negatives, each verified by
+constructing the plan and watching pyrrho stay silent.
 
-It installs pyrrho, reviews the plan, writes the verdict to the workflow's job
-summary, posts it as a pull request comment — updating the same comment on each
-push rather than adding one per commit — and fails the job when the verdict is
-`block`. Outputs are `verdict`, `findings`, `worst-severity` and `markdown`.
+That audit is where most of this release came from. The worst of them:
 
-The comment leads with the verdict and a one-line reason, puts the findings in a
-table, and folds the evidence into a `<details>` block. A review comment that
-opens with three screens of JSON is a review comment nobody reads.
+| What it missed | Why the check failed | Now |
+|---|---|---|
+| `cidr_blocks = ["0.0.0.0/1", "128.0.0.0/1"]` | Every world check tested one block for `prefixlen == 0`. Two halves are the whole internet and each half is an ordinary CIDR | `cidr.covers_internet` collapses the set first |
+| A brand-new public source on a database port | The widening branch required a *prior* CIDR to exist, so a rule that had only security-group sources reported nothing when it gained a public `/24` | Severity now scales with reach, with no prior-value precondition |
+| A world-open rule whose ports are unknown | `all([])` is `True`, so an unresolved port range was judged "web ports only" and reported `low` | An unknown range is `NE003` at `high`, and says it cannot be reviewed |
+| `aws_default_security_group` | One word different from `aws_security_group`, and it applies to every ENI in the VPC with no explicit group | Both types share the extraction path |
+| A network ACL `deny` entry deleted | The check read only `after`. After the change there is nothing there to object to | `NE016`, comparing both sides |
+| CloudTrail destroyed | In none of the three lookup tables | `RD009` |
+| `backup_retention_period` set to `0` | Not a guard attribute by name, and it deletes the backups already taken | `RD010` |
 
-For the comment you need `pull-requests: write`; for the Security tab upload,
-`security-events: write`.
+Two of those — the split internet and the unknown-port downgrade — are evasions
+rather than oversights: a change written that way passes review *because* it
+reads as scoped. Both now have corpus cases, so they stay caught.
+
+---
 
 ---
 
@@ -430,6 +429,8 @@ There is no random sampling anywhere, so there is no seed to fix. The corpus is 
 fixed set of files and the analyzers are deterministic, which means two runs on
 one commit are byte-identical — a property asserted by
 `tests/test_corpus.py::TestBenchmark::test_the_benchmark_is_deterministic`.
+
+---
 
 ## What is verified, and how
 
@@ -505,6 +506,46 @@ credentials.
 
 ---
 
+---
+
+## Also works as a Claude Code plugin
+
+Everything above is a Python CLI with no runtime dependencies and no connection
+to any model. This section is an optional integration on top of it.
+
+The repository doubles as a Claude Code plugin. Loaded, it provides:
+
+- `/pyrrho:review` — a skill that drives the whole review
+- two subagents, `network-exposure` and `real-diff`, that run the deterministic
+  pass and then do the judgement work a rule cannot: resolving referenced
+  security groups, tracing what consumes a resource about to be destroyed, and
+  reconciling the plan against what the pull request claims
+- `pyrrho` on `PATH`, working without a separate install
+
+```bash
+claude --plugin-dir /path/to/pyrrho
+```
+
+Both agents are declared with `tools: Bash, Read, Grep, Glob` — no `Edit` or
+`Write`. The kit reviews; it does not change infrastructure. That constraint is
+asserted by a test, not just documented.
+
+Their instructions require them to keep two categories apart in every report:
+findings pyrrho produced, with a rule ID and evidence, and concerns the agent
+formed itself, marked unverified. The value of a second opinion collapses if you
+cannot tell which half was mechanically checked.
+
+**What is asserted about them, and what is not.** Tests check that the agent
+files parse, that neither can edit or write files, that each names the analyzer
+it drives, and that each is told not to invent findings. Nothing tests the
+*quality* of the reviews they produce, because there is no honest way to. Treat
+them as a convenience over the CLI, not as the thing that makes the findings
+trustworthy — the CLI is that.
+
+---
+
+---
+
 ## Repository layout
 
 ```
@@ -524,6 +565,9 @@ pyrrho/
 │   ├── manifest.json           per case: which rules must fire, which must not
 │   └── cases/<id>/{main.tf,plan.json}
 ├── action.yml                  the reusable GitHub Action
+├── CONTRIBUTING.md             how to reproduce every number here, and add a rule
+├── SECURITY.md                 what counts as a vulnerability in a review tool
+├── CHANGELOG.md                what changed, and what the audit found
 ├── agents/                     Claude Code subagents
 ├── skills/review/SKILL.md      Claude Code skill
 ├── bin/pyrrho                  wrapper so the plugin works without an install
@@ -545,6 +589,8 @@ signal into decoration.
 
 ---
 
+---
+
 ## Next
 
 1. Capture the corpus from a real `terraform plan` and flip
@@ -557,6 +603,8 @@ signal into decoration.
    rule sourced from another group.
 4. Then, and only then, a third analyzer.
 
+---
+
 ## Name
 
 Pyrrho of Elis (c. 360–270 BC) founded the school that carries his name. Its
@@ -564,6 +612,8 @@ central practice is *epoché*: suspension of judgement while the evidence is
 insufficient. Not "I don't know" — "I do not assert this yet."
 
 That is the whole design brief.
+
+---
 
 ## License
 

@@ -261,7 +261,10 @@ class TestBenchmark:
     def test_the_readme_states_what_is_missing_up_front(self):
         """Rule: if something is not implemented, the README says so on screen one."""
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        first_screen = readme[: readme.index("## Why it exists")]
+        # "Up front" means before a reader reaches the installation
+        # instructions: nobody should be able to install this without having
+        # been told what it does not do.
+        first_screen = readme[: readme.index("## Install")]
         assert "What is not here" in first_screen
 
         # The named-but-unbuilt analyzers from the original design.
@@ -270,13 +273,18 @@ class TestBenchmark:
         for name in sorted(planned - built):
             assert name in first_screen, f"{name} is not declared missing up front"
 
-        # And the inverse: something that exists must not be listed as missing.
-        not_here = first_screen[first_screen.index("What is not here") :]
-        table = not_here[: not_here.index("Also not covered")]
-        for name in sorted(built):
-            assert name not in table, (
-                f"{name} is implemented but still listed as not implemented"
-            )
+        # And the inverse: something that exists must not be described as
+        # missing. The section is prose now, so the check is that no built
+        # analyzer's name appears on a line that also says it is absent.
+        section = first_screen[first_screen.index("## What is not here") :]
+        absent_markers = ("not implemented", "do not exist", "are not")
+        for line in section.splitlines():
+            if not any(marker in line for marker in absent_markers):
+                continue
+            for name in sorted(built):
+                assert name not in line, (
+                    f"{name} is implemented but this line says otherwise: {line.strip()!r}"
+                )
 
     def test_the_readme_counts_the_analyzers_correctly(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")

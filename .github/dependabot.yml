@@ -1,0 +1,20 @@
+# Actions get pinned to tags that move under you. Left unmanaged, a workflow
+# quietly runs a year-old checkout action; managed badly, it churns. Weekly,
+# grouped into one pull request, is the compromise.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      dev-dependencies:
+        patterns: ["*"]
