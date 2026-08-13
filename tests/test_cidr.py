@@ -133,3 +133,58 @@ class TestDescribe:
 
     def test_narrow_blocks_are_printed_plainly(self):
         assert cidr.describe(net("203.0.113.0/24")) == "203.0.113.0/24"
+
+
+class TestReachabilityIsVersionIndependent:
+    """Regression: the answer used to depend on the Python version.
+
+    `ipaddress.ip_network("0.0.0.0/1").is_private` is True on Python 3.10 and
+    False on 3.11 and later. Delegating reachability to that property meant a
+    rule admitting half the internet reported nothing on one interpreter and
+    HIGH on another. Reachability is now decided by this project, against the
+    IANA special-purpose registries, and CI runs the matrix that caught it.
+    """
+
+    @pytest.mark.parametrize(
+        "block, public",
+        [
+            ("0.0.0.0/0", True),      # the whole internet
+            ("0.0.0.0/1", True),      # half of it: the case that differed
+            ("128.0.0.0/1", True),    # the other half
+            ("45.33.32.0/24", True),  # ordinary public space
+            ("10.0.0.0/8", False),    # RFC 1918
+            ("10.1.2.0/24", False),   # inside RFC 1918
+            ("172.16.0.0/12", False),
+            ("192.168.1.0/24", False),
+            ("127.0.0.1/32", False),  # loopback
+            ("169.254.0.0/16", False),  # link-local
+            ("100.64.0.0/10", False),  # carrier-grade NAT is not globally routable
+            ("203.0.113.0/24", False),  # RFC 5737 documentation
+            ("224.0.0.0/4", False),   # multicast
+            ("240.0.0.0/4", False),   # reserved
+            ("2001:db8::/32", False),  # IPv6 documentation
+            ("fc00::/7", False),      # IPv6 unique local
+            ("fe80::/10", False),     # IPv6 link-local
+            ("2606:4700::/32", True),  # ordinary public IPv6
+            ("::/0", True),
+        ],
+    )
+    def test_reachability_is_fixed_by_this_project(self, block, public):
+        assert cidr.is_public(net(block)) is public
+
+    def test_a_supernet_is_not_private_because_it_contains_private_space(self):
+        """The mistake that made it version-dependent, stated as a test."""
+        assert cidr.is_public(net("0.0.0.0/1"))
+        assert cidr.is_public(net("0.0.0.0/0"))
+
+    def test_half_the_internet_on_a_database_port_is_never_silent(self):
+        from pyrrho import ports
+
+        half = [net("0.0.0.0/1")]
+        assert cidr.reach(half) == "broad"
+        assert any(cidr.is_public(n) for n in half)
+        assert ports.sensitive_in_range(5432, 5432, "tcp")
+
+    def test_the_reserved_lists_parse(self):
+        for block in cidr.NOT_GLOBALLY_ROUTABLE_V4 + cidr.NOT_GLOBALLY_ROUTABLE_V6:
+            assert cidr.parse(block) is not None, block

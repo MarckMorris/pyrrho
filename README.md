@@ -55,7 +55,7 @@ are complements, and Checkov is right on its own terms every time.
 
 ## What is not here
 
-Release 0.2.0 ships **three analyzers**, for Terraform plan JSON, for AWS.
+Release 0.2.1 ships **three analyzers**, for Terraform plan JSON, for AWS.
 Stated up front so a clean run is not mistaken for a clean bill of health:
 
 - **`blast-radius` and `compliance-drift` are not implemented.** They are named
@@ -245,7 +245,7 @@ The repository is also a GitHub Action.
 
 ```yaml
 - name: Review the plan
-  uses: MarckMorris/pyrrho@v0.2.0
+  uses: MarckMorris/pyrrho@v0.2.1
   with:
     plan: plan.json
     fail-on: high
@@ -398,7 +398,7 @@ pyrrho benchmark
   false alarms 0/54 cases (0%)
 ```
 
-Test suite: **747 tests, 98% line coverage**, on Python 3.10, 3.11 and 3.12.
+Test suite: **776 tests, 98% line coverage**, on Python 3.10, 3.11 and 3.12.
 
 ```bash
 pytest -q --cov=pyrrho --cov-report=term-missing

@@ -3,6 +3,36 @@
 Every figure below is produced by a script in `scripts/`. Nothing here is
 quoted from memory.
 
+## 0.2.1
+
+Both fixes below were found by CI failing on a Dependabot pull request, not by
+anything I ran locally. That is the argument for the matrix.
+
+### Fixed
+
+- **The verdict depended on the Python version.**
+  `ipaddress.ip_network("0.0.0.0/1").is_private` is `True` on Python 3.10 and
+  `False` on 3.11 and later. `cidr.is_public` delegated to that property, so a
+  security group rule admitting **half the internet** reported nothing at all on
+  3.10 and `high` on 3.11. Reachability is now decided against an explicit list
+  of the IANA special-purpose blocks and is identical on 3.10, 3.11, 3.12 and
+  3.13, each asserted by a parametrised test.
+- **The Action died on exactly the case it exists for.** pyrrho exits 1 whenever
+  a review blocks. The step captured that exit code for the JSON render but had
+  `set -e` back on for the markdown render, which then killed the step before
+  any output was written. A correctly-blocking review looked like a broken
+  action. `tests/test_action.py` now extracts the step's shell out of the YAML,
+  substitutes the inputs and runs it, because 747 Python tests could not see a
+  bug in a bash script embedded in a workflow file.
+- The pull request comment no longer fails the job when it cannot be posted.
+  Dependabot and fork pull requests run with a read-only token, and reporting a
+  permissions problem as if it were a finding is worse than not commenting.
+
+### Changed
+
+- CI now tests Python 3.13 as well. The version-dependent bug existed on the
+  oldest supported interpreter only; a narrower matrix would not have found it.
+
 ## 0.2.0
 
 ### The audit

@@ -100,23 +100,63 @@ def reach(nets: Iterable[IPNetwork]) -> str:
     return "narrow"
 
 
-def is_public(net: IPNetwork) -> bool:
-    """True when the block contains addresses reachable from the internet.
+# Blocks that are not globally routable, from the IANA special-purpose address
+# registries. This list exists rather than a call to `ipaddress.is_private`
+# because that property's meaning *changed between Python releases*: on 3.10
+# `ip_network("0.0.0.0/1").is_private` is True, and on 3.11 and later it is
+# False. A rule admitting half the internet therefore reported nothing on one
+# interpreter and HIGH on another, which is not a defect a security tool is
+# allowed to have. Reachability is decided here, by this project, on every
+# version.
+NOT_GLOBALLY_ROUTABLE_V4: tuple[str, ...] = (
+    "0.0.0.0/8",           # "this network"
+    "10.0.0.0/8",          # RFC 1918
+    "100.64.0.0/10",       # RFC 6598 carrier-grade NAT
+    "127.0.0.0/8",         # loopback
+    "169.254.0.0/16",      # link-local
+    "172.16.0.0/12",       # RFC 1918
+    "192.0.0.0/24",        # IETF protocol assignments
+    "192.0.2.0/24",        # RFC 5737 TEST-NET-1
+    "192.88.99.0/24",      # deprecated 6to4 relay anycast
+    "192.168.0.0/16",      # RFC 1918
+    "198.18.0.0/15",       # RFC 2544 benchmarking
+    "198.51.100.0/24",     # RFC 5737 TEST-NET-2
+    "203.0.113.0/24",      # RFC 5737 TEST-NET-3
+    "224.0.0.0/4",         # multicast
+    "240.0.0.0/4",         # reserved
+)
 
-    ``ip_network.is_private`` is False for 0.0.0.0/0 even though that block
-    *contains* private space, which is the behaviour we want here: a rule that
-    admits 0.0.0.0/0 admits the public internet regardless of what else it
-    admits.
+NOT_GLOBALLY_ROUTABLE_V6: tuple[str, ...] = (
+    "::/128",              # unspecified
+    "::1/128",             # loopback
+    "::ffff:0:0/96",       # IPv4-mapped
+    "64:ff9b:1::/48",      # local-use NAT64
+    "100::/64",            # discard-only
+    "2001:db8::/32",       # documentation
+    "fc00::/7",            # unique local
+    "fe80::/10",           # link-local
+    "ff00::/8",            # multicast
+)
+
+_RESERVED: dict[int, tuple[IPNetwork, ...]] = {
+    4: tuple(ipaddress.ip_network(c) for c in NOT_GLOBALLY_ROUTABLE_V4),
+    6: tuple(ipaddress.ip_network(c) for c in NOT_GLOBALLY_ROUTABLE_V6),
+}
+
+
+def is_public(net: IPNetwork) -> bool:
+    """True when the block contains at least one globally routable address.
+
+    Note the "at least one". A block is treated as public unless it sits
+    entirely inside reserved space, so ``0.0.0.0/1`` is public: it is a
+    supernet of some private ranges, and it also admits most of the internet.
+    Judging a supernet by the reserved ranges it happens to contain is exactly
+    the mistake that made this version-dependent.
     """
-    if is_world(net):
-        return True
-    return not (
-        net.is_private
-        or net.is_loopback
-        or net.is_link_local
-        or net.is_multicast
-        or net.is_reserved
-    )
+    for reserved in _RESERVED.get(net.version, ()):
+        if net.subnet_of(reserved):  # type: ignore[arg-type]
+            return False
+    return True
 
 
 def is_broad(net: IPNetwork) -> bool:

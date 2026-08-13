@@ -134,9 +134,9 @@ class TestTheJobsAreHonest:
                     f"uploads SARIF should have it"
                 )
 
-    def test_the_test_job_runs_on_three_python_versions(self, workflow):
+    def test_the_test_job_runs_on_every_supported_python(self, workflow):
         matrix = workflow["jobs"]["test"]["strategy"]["matrix"]["python"]
-        assert {"3.10", "3.11", "3.12"} <= set(str(v) for v in matrix)
+        assert {"3.10", "3.11", "3.12", "3.13"} <= set(str(v) for v in matrix)
 
     def test_the_python_versions_match_what_the_package_claims(self, workflow):
         pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")

@@ -123,38 +123,55 @@ runs:
         IFS=',' read -ra names <<< "${{ inputs.analyzers }}"
         for name in "${names[@]}"; do
           trimmed="$(echo "$name" | xargs)"
-          [ -n "$trimmed" ] && base+=(--analyzer "$trimmed")
+          if [ -n "$trimmed" ]; then
+            base+=(--analyzer "$trimmed")
+          fi
         done
 
         IFS=',' read -ra claims <<< "${{ inputs.claim }}"
         for pattern in "${claims[@]}"; do
           trimmed="$(echo "$pattern" | xargs)"
-          [ -n "$trimmed" ] && base+=(--claim "$trimmed")
+          if [ -n "$trimmed" ]; then
+            base+=(--claim "$trimmed")
+          fi
         done
 
-        [ -n "${{ inputs.baseline }}" ] && base+=(--baseline "${{ inputs.baseline }}")
+        # Written as `if` rather than `[ ... ] && ...` purely for legibility;
+        # both are safe under `set -e`, which does not fire on a false test in
+        # an AND list.
+        if [ -n "${{ inputs.baseline }}" ]; then
+          base+=(--baseline "${{ inputs.baseline }}")
+        fi
 
         # Files written once, by the run that also decides the exit code.
         artifacts=()
-        [ -n "${{ inputs.sarif }}" ] && artifacts+=(--sarif "${{ inputs.sarif }}")
-        [ -n "${{ inputs.sarif-location }}" ] && artifacts+=(--sarif-location "${{ inputs.sarif-location }}")
-        [ -n "${{ inputs.attest }}" ] && artifacts+=(--attest "${{ inputs.attest }}")
+        if [ -n "${{ inputs.sarif }}" ]; then
+          artifacts+=(--sarif "${{ inputs.sarif }}")
+        fi
+        if [ -n "${{ inputs.sarif-location }}" ]; then
+          artifacts+=(--sarif-location "${{ inputs.sarif-location }}")
+        fi
+        if [ -n "${{ inputs.attest }}" ]; then
+          artifacts+=(--attest "${{ inputs.attest }}")
+        fi
 
-        # The exit code is captured rather than allowed to fail the step, so the
-        # summary and the pull request comment still get written when the review
-        # blocks. The last step in this action re-raises it.
+        # Both renders are run with `set -e` off, and that is not a detail.
+        # pyrrho exits 1 whenever the review blocks, which is the case this job
+        # exists to handle. Leaving `-e` on for the second render killed the step
+        # before it wrote any outputs, so the verdict never reached the workflow
+        # and a correctly-blocking review looked like a broken action.
         set +e
         pyrrho "${base[@]}" "${artifacts[@]}" --format json > pyrrho-report.json
         code=$?
+        pyrrho "${base[@]}" --format markdown > pyrrho-report.md
+        markdown_code=$?
         set -e
 
-        if [ "$code" -eq 2 ]; then
+        if [ "$code" -eq 2 ] || [ "$markdown_code" -eq 2 ]; then
           echo "pyrrho could not review the plan. Output:" >&2
           cat pyrrho-report.json >&2 || true
           exit 2
         fi
-
-        pyrrho "${base[@]}" --format markdown > pyrrho-report.md
 
         python - <<'PY' >> "$GITHUB_OUTPUT"
         import json
@@ -174,8 +191,13 @@ runs:
           cat pyrrho-report.md >> "$GITHUB_STEP_SUMMARY"
         fi
 
+    # Dependabot and fork pull requests run with a read-only token, so posting
+    # a comment returns 403. The review has already happened by this point and
+    # its verdict is in the job summary; failing here would report a permissions
+    # problem as if it were a finding.
     - name: Comment on the pull request
       if: ${{ inputs.comment-on-pr == 'true' && github.event_name == 'pull_request' && always() }}
+      continue-on-error: true
       uses: actions/github-script@v7
       with:
         script: |
